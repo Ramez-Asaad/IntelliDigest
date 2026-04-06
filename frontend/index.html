@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IntelliDigest — AI Research Assistant</title>
+    <meta name="description"
+        content="Multi-source AI research assistant. Upload documents, fetch news, and chat with your knowledge base.">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231E3A8A' stroke-width='2'><path d='M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z'/><line x1='9' y1='21' x2='15' y2='21'/><line x1='10' y1='17' x2='10' y2='21'/><line x1='14' y1='17' x2='14' y2='21'/></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="static/styles.css">
+
+</head>
+
+<body>
+    <!-- Ambient background glow — §32: "flowing gradients, soft glows" -->
+    <div class="ambient">
+        <div class="ambient-orb ambient-1"></div>
+        <div class="ambient-orb ambient-2"></div>
+    </div>
+
+    <!-- Top Bar -->
+    <header class="topbar">
+        <div class="topbar-inner">
+            <a class="brand" href="/">
+                <span class="brand-mark"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path
+                            d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z" />
+                        <line x1="9" y1="21" x2="15" y2="21" />
+                        <line x1="10" y1="17" x2="10" y2="21" />
+                        <line x1="14" y1="17" x2="14" y2="21" />
+                    </svg></span>
+                <span class="brand-name">IntelliDigest</span>
+            </a>
+            <nav class="topbar-nav" id="topbarNav">
+                <button class="nav-tab active" data-tab="chat">Chat</button>
+                <button class="nav-tab" data-tab="news">News</button>
+                <button class="nav-tab" data-tab="search">Search</button>
+            </nav>
+            <div class="topbar-right">
+                <div class="topbar-stat"><span class="pulse-dot"></span><b id="topStatChunks">0</b> chunks</div>
+                <button class="topbar-action" id="toolsBtn" title="Tools & Settings">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.8">
+                        <line x1="4" y1="6" x2="20" y2="6" />
+                        <line x1="4" y1="12" x2="20" y2="12" />
+                        <line x1="4" y1="18" x2="20" y2="18" />
+                        <circle cx="8" cy="6" r="1.5" fill="currentColor" />
+                        <circle cx="16" cy="12" r="1.5" fill="currentColor" />
+                        <circle cx="10" cy="18" r="1.5" fill="currentColor" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Tools Drawer -->
+    <div class="drawer-backdrop" id="drawerBackdrop"></div>
+    <aside class="drawer" id="drawer">
+        <div class="drawer-head">
+            <h3>Tools</h3>
+            <button class="drawer-close" id="drawerClose" aria-label="Close">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+            </button>
+        </div>
+        <div class="drawer-body">
+            <section class="tool-section">
+                <label class="tool-label">Persona</label>
+                <select id="personaSelect" class="field">
+                    <option value="casual_reader">Casual Reader</option>
+                    <option value="tech_enthusiast">Tech Enthusiast</option>
+                    <option value="business_analyst">Business Analyst</option>
+                    <option value="academic_researcher">Academic Researcher</option>
+                    <option value="political_observer">Political Observer</option>
+                </select>
+            </section>
+            <section class="tool-section">
+                <label class="tool-label">Upload Documents</label>
+                <div class="drop-area" id="uploadZone">
+                    <input type="file" id="fileInput" multiple accept=".pdf,.docx,.xlsx,.txt,.md" hidden>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                        opacity="0.4">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <span>Drop files or browse</span>
+                    <small>PDF, DOCX, Excel, TXT</small>
+                </div>
+                <div id="uploadStatus" class="file-list" hidden></div>
+                <button class="btn btn-primary btn-block" id="ingestBtn" disabled>Ingest</button>
+            </section>
+            <section class="tool-section">
+                <label class="tool-label">Fetch News</label>
+                <input type="text" id="newsInput" class="field" placeholder="Topic...">
+                <button class="btn btn-primary btn-block" id="newsBtn">Fetch Articles</button>
+            </section>
+            <section class="tool-section">
+                <label class="tool-label">Email Insights <span class="badge">n8n</span></label>
+                <div class="n8n-settings">
+                    <input type="text" id="n8nWebhookUrl" class="field field-sm" placeholder="n8n Webhook URL">
+                    <input type="text" id="n8nAdminEmail" class="field field-sm" placeholder="Admin Email (Reports to)">
+                    <input type="text" id="n8nHostGmail" class="field field-sm" placeholder="Host Gmail Filter">
+                    <input type="number" id="n8nMaxEmails" class="field field-sm" placeholder="Max Emails (e.g. 10)">
+                </div>
+                <input type="text" id="n8nEmail" class="field" placeholder="Target Email to summarize...">
+                <input type="text" id="n8nPrompt" class="field" placeholder="What to analyze...">
+                <button class="btn btn-primary btn-block" id="n8nTriggerBtn">Analyze Emails</button>
+                <div id="n8nStatus" class="n8n-status" hidden></div>
+            </section>
+            <section class="tool-section">
+                <label class="tool-label">Summary Mode</label>
+                <div class="switch-row">
+                    <button class="switch-btn active" data-mode="brief">Brief</button>
+                    <button class="switch-btn" data-mode="detailed">Detailed</button>
+                </div>
+            </section>
+            <section class="tool-section">
+                <label class="tool-label">Knowledge Base</label>
+                <p class="stat-line"><b id="statChunks">0</b> chunks &middot; <b id="statDocs">0</b> docs &middot; <b
+                        id="statArticles">0</b> articles</p>
+                <div class="tool-row">
+                    <button class="btn btn-ghost btn-sm" id="clearKbBtn">Clear KB</button>
+                    <button class="btn btn-ghost btn-sm" id="clearChatBtn">Clear Chat</button>
+                </div>
+            </section>
+        </div>
+    </aside>
+
+    <!-- App Body -->
+    <div class="app-body">
+
+        <!-- CHAT VIEW -->
+        <div class="view view-active" id="chatView">
+
+            <!-- Chat Stream -->
+            <div class="stream" id="chatStream">
+                <div class="chat-header-wrapper" id="chatHeaderWrapper">
+                    <!-- Hero -->
+                    <div class="hero">
+                        <div class="hero-bg"></div>
+                        <div class="hero-text">
+                            <p class="eyebrow">LangChain + Groq</p>
+                            <h1>Your research, <em>understood.</em></h1>
+                            <p class="subtitle">Upload documents or fetch live news, then ask anything. IntelliDigest
+                                retrieves,
+                                reasons, and responds with cited answers.</p>
+                            <button class="btn btn-glass" id="heroBtn">Open Tools</button>
+                        </div>
+                    </div>
+
+                    <!-- Feature strip — gives visual rhythm, breaks up empty space -->
+                    <div class="feature-strip">
+                        <div class="centered">
+                            <div class="features">
+                                <div class="feature">
+                                    <div class="feature-icon"><svg width="20" height="20" viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                            <polyline points="14 2 14 8 20 8" />
+                                            <line x1="16" y1="13" x2="8" y2="13" />
+                                            <line x1="16" y1="17" x2="8" y2="17" />
+                                            <polyline points="10 9 9 9 8 9" />
+                                        </svg></div>
+                                    <div class="feature-info">
+                                        <strong>Multi-format Ingestion</strong>
+                                        <span>PDF, DOCX, Excel, TXT</span>
+                                    </div>
+                                </div>
+                                <div class="feature">
+                                    <div class="feature-icon"><svg width="20" height="20" viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <rect x="2" y="3" width="20" height="18" rx="2" />
+                                            <path d="M8 7h8M8 11h5M8 15h3" />
+                                        </svg></div>
+                                    <div class="feature-info">
+                                        <strong>Live News</strong>
+                                        <span>Real-time from NewsAPI</span>
+                                    </div>
+                                </div>
+                                <div class="feature">
+                                    <div class="feature-icon"><svg width="20" height="20" viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <circle cx="12" cy="12" r="10" />
+                                            <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                                            <line x1="9" y1="9" x2="9.01" y2="9" />
+                                            <line x1="15" y1="9" x2="15.01" y2="9" />
+                                        </svg></div>
+                                    <div class="feature-info">
+                                        <strong>5 Personas</strong>
+                                        <span>Tone-adaptive answers</span>
+                                    </div>
+                                </div>
+                                <div class="feature">
+                                    <div class="feature-icon"><svg width="20" height="20" viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                        </svg></div>
+                                    <div class="feature-info">
+                                        <strong>Source Citations</strong>
+                                        <span>Grounded in your data</span>
+                                    </div>
+                                </div>
+                                <div class="feature">
+                                    <div class="feature-icon"><svg width="20" height="20" viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                                        </svg></div>
+                                    <div class="feature-info">
+                                        <strong>n8n Automation</strong>
+                                        <span>Email insight extraction</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="centered">
+                    <div class="welcome" id="chatWelcome">
+                        <div class="welcome-glow"></div>
+                        <div class="welcome-brand"><svg width="40" height="40" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path
+                                    d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z" />
+                                <line x1="9" y1="21" x2="15" y2="21" />
+                                <line x1="10" y1="17" x2="10" y2="21" />
+                                <line x1="14" y1="17" x2="14" y2="21" />
+                            </svg></div>
+                        <h3>Ask me anything</h3>
+                        <p>Your knowledge base is ready. Upload documents or fetch news to get started, then ask
+                            questions below.</p>
+                        <div class="chip-row">
+                            <button class="chip" onclick="sendMessage('What do you have in the knowledge base?')">What's
+                                in the KB?</button>
+                            <button class="chip" onclick="sendMessage('Summarize the key topics')">Summarize
+                                docs</button>
+                            <button class="chip" onclick="sendMessage('What are the latest developments?')">Latest
+                                news</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Composer -->
+            <div class="composer-bar">
+                <div class="centered">
+                    <div class="composer">
+                        <input type="text" id="chatInput" class="composer-field" placeholder="Ask anything..."
+                            autocomplete="off">
+                        <button class="composer-btn" id="sendBtn" title="Send">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.2">
+                                <line x1="22" y1="2" x2="11" y2="13" />
+                                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                            </svg>
+                        </button>
+                    </div>
+                    <span class="composer-note" id="personaIndicator">Casual Reader</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- NEWS VIEW -->
+        <div class="view" id="newsView">
+            <div class="view-head">
+                <div class="centered">
+                    <h2>News Feed</h2>
+                    <p>Articles fetched and ingested into your knowledge base.</p>
+                </div>
+            </div>
+            <div class="view-body">
+                <div class="centered" id="newsContainer">
+                    <div class="empty">
+                        <div class="empty-visual"><svg width="40" height="40" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="3" width="20" height="18" rx="2" />
+                                <path d="M8 7h8M8 11h5M8 15h3" />
+                            </svg></div>
+                        <h4>No articles yet</h4>
+                        <p>Open <b>Tools</b> and search for any topic to fetch live articles from NewsAPI.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SEARCH VIEW -->
+        <div class="view" id="searchView">
+            <div class="view-head">
+                <div class="centered">
+                    <h2>Semantic Search</h2>
+                    <p>Search across all sources by meaning, not keywords.</p>
+                </div>
+            </div>
+            <div class="centered search-wrap">
+                <div class="composer">
+                    <input type="text" id="searchInput" class="composer-field" placeholder="Search by meaning...">
+                    <button class="btn btn-primary" id="searchBtn">Search</button>
+                </div>
+            </div>
+            <div class="view-body">
+                <div class="centered" id="searchResults">
+                    <div class="empty">
+                        <div class="empty-visual"><svg width="40" height="40" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8" />
+                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                            </svg></div>
+                        <h4>Semantic Search</h4>
+                        <p>Enter a query above to find the most relevant content across all your documents and articles.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Nav (mobile) -->
+    <nav class="bottom-bar" id="bottomBar">
+        <button class="bb-btn active" data-tab="chat">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            Chat
+        </button>
+        <button class="bb-btn" data-tab="news">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="18" rx="2" />
+                <path d="M8 7h8M8 11h5" />
+            </svg>
+            News
+        </button>
+        <button class="bb-btn" data-tab="search">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            Search
+        </button>
+    </nav>
+
+    <div class="overlay" id="loadingOverlay">
+        <div class="spinner"></div><span id="loadingText">Processing...</span>
+    </div>
+    <div class="toasts" id="toastContainer"></div>
+    <script src="/static/app.js"></script>
+</body>
+
+</html>
