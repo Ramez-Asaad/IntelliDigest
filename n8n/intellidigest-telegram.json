@@ -1,0 +1,99 @@
+{
+  "name": "IntelliDigest → Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "intellidigest-telegram",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1f2e3d4-0001-4000-8000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "intellidigest-telegram"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nlet data = raw.body;\nif (typeof data === 'string') {\n  try { data = JSON.parse(data); } catch (e) {\n    throw new Error('Body is not valid JSON');\n  }\n}\nif (!data || typeof data !== 'object' || Array.isArray(data)) {\n  data = raw;\n}\nconst chatId = data.telegram_chat_id;\nif (chatId === undefined || chatId === null || String(chatId).trim() === '') {\n  throw new Error('Missing telegram_chat_id');\n}\nconst action = data.action || 'save_message';\nlet messageText;\nif (action === 'verify_telegram') {\n  messageText = 'IntelliDigest: Telegram link confirmed. Saved replies will be sent to this chat.';\n} else {\n  const parts = [];\n  if (data.user_message && String(data.user_message).trim()) {\n    parts.push('Question:\\n' + String(data.user_message).trim());\n  }\n  parts.push('Assistant:\\n' + String(data.assistant_message || '').trim());\n  const meta = [data.channel, data.persona].filter(Boolean).join(' · ');\n  if (meta) {\n    parts.push(meta);\n  }\n  messageText = parts.join('\\n\\n');\n}\nreturn [{ json: { telegram_chat_id: String(chatId).trim(), messageText, action } }];"
+      },
+      "id": "a1f2e3d4-0002-4000-8000-000000000002",
+      "name": "Prepare Telegram message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.telegram_chat_id }}",
+        "text": "={{ $json.messageText }}",
+        "additionalFields": {}
+      },
+      "id": "a1f2e3d4-0003-4000-8000-000000000003",
+      "name": "Send Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true }) }}",
+        "options": {}
+      },
+      "id": "a1f2e3d4-0004-4000-8000-000000000004",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [720, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare Telegram message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Telegram message": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Telegram": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

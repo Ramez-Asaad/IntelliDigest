@@ -11,6 +11,7 @@ services:
       - USE_TF=0
     volumes:
       - chroma_data:/app/chroma_db
+      - ticket_data:/app/data
     depends_on:
       - n8n
     restart: unless-stopped
@@ -32,4 +33,5 @@ services:
 
 volumes:
   chroma_data:
+  ticket_data:
   n8n_data:

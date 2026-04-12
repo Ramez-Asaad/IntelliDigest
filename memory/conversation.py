@@ -9,11 +9,14 @@ summary compression.
 """
 
 import os
+import sys
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, AIMessage
 
 load_dotenv()
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from chains.llm_factory import make_groq_with_ollama_fallback
 
 
 class ConversationMemory:
@@ -31,10 +34,10 @@ class ConversationMemory:
                 "Groq API key is required. Set GROQ_API_KEY in your .env file."
             )
 
-        self.llm = ChatGroq(
-            groq_api_key=api_key,
+        self.llm = make_groq_with_ollama_fallback(
             model_name=model,
             temperature=0.2,
+            groq_api_key=api_key,
         )
         self.max_history_length = max_history_length
         self.chat_history: list[dict] = []

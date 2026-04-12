@@ -17,6 +17,7 @@ load_dotenv()
 
 CHROMA_PERSIST_DIR = os.path.join(os.path.dirname(__file__), "..", "chroma_db")
 COLLECTION_NAME = "intellidigest"
+SUPPORT_COLLECTION_NAME = "intellidigest_support"
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
@@ -31,6 +32,12 @@ class VectorStoreEngine:
         )
         self.vectorstore = Chroma(
             collection_name=COLLECTION_NAME,
+            embedding_function=self.embeddings,
+            persist_directory=CHROMA_PERSIST_DIR,
+        )
+        # Customer-service-only KB (not user uploads / news)
+        self.support_vectorstore = Chroma(
+            collection_name=SUPPORT_COLLECTION_NAME,
             embedding_function=self.embeddings,
             persist_directory=CHROMA_PERSIST_DIR,
         )
@@ -86,6 +93,26 @@ class VectorStoreEngine:
         self.vectorstore.add_documents(documents)
         return len(documents)
 
+    def add_support_texts(
+        self,
+        chunks: list[str],
+        source: str = "support_kb",
+        metadata_extras: dict | None = None,
+    ) -> int:
+        """Embed chunks into the dedicated support (customer-service) collection only."""
+        documents = []
+        for i, chunk in enumerate(chunks):
+            if not chunk.strip():
+                continue
+            meta = {"source": source, "chunk_index": i, "kb": "support"}
+            if metadata_extras:
+                meta.update(metadata_extras)
+            documents.append(Document(page_content=chunk, metadata=meta))
+        if not documents:
+            return 0
+        self.support_vectorstore.add_documents(documents)
+        return len(documents)
+
     # ── Search ───────────────────────────────────────────────────────────
 
     def search_similar(self, query: str, k: int = 5) -> list[Document]:
@@ -98,11 +125,21 @@ class VectorStoreEngine:
         """Search with relevance scores."""
         return self.vectorstore.similarity_search_with_score(query, k=k)
 
+    def search_support_knowledge_with_scores(
+        self, query: str, k: int = 5
+    ) -> list[tuple[Document, float]]:
+        """Semantic search over the support-only KB (not user uploads or news)."""
+        return self.support_vectorstore.similarity_search_with_score(query, k=k)
+
     # ── Management ───────────────────────────────────────────────────────
 
     def get_collection_count(self) -> int:
         """Return the total number of stored embeddings."""
         return self.vectorstore._collection.count()
+
+    def get_support_collection_count(self) -> int:
+        """Chunks in the dedicated support knowledge base."""
+        return self.support_vectorstore._collection.count()
 
     def clear_collection(self) -> None:
         """Delete all documents from the collection."""

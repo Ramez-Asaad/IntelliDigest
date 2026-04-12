@@ -15,9 +15,7 @@ reasoning with tool use.
 
 import os
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.tools import tool
 from langchain_core.output_parsers import StrOutputParser
 
@@ -25,6 +23,7 @@ load_dotenv()
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from chains.llm_factory import make_groq_with_ollama_fallback
 from personas.personas import PERSONAS, DEFAULT_PERSONA
 
 
@@ -40,10 +39,10 @@ def create_research_agent(vectorstore_engine, news_retriever=None, summarizer=No
     if not api_key:
         raise ValueError("GROQ_API_KEY not set in environment.")
 
-    llm = ChatGroq(
-        groq_api_key=api_key,
+    llm = make_groq_with_ollama_fallback(
         model_name="llama-3.3-70b-versatile",
         temperature=0.3,
+        groq_api_key=api_key,
     )
 
     def agent_respond(

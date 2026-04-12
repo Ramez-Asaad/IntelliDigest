@@ -4,7 +4,10 @@
  */
 
 const API = '';
-const state = { persona: 'casual_reader', summaryMode: 'brief', selectedFiles: [], articles: [], msgs: [] };
+const state = {
+    persona: 'casual_reader', summaryMode: 'brief', selectedFiles: [], articles: [], msgs: [],
+    supportSessionId: crypto.randomUUID(), supportMsgs: [], ticketCount: 0,
+};
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
 
@@ -22,16 +25,26 @@ const el = {
     searchBtn: $('#searchBtn'), searchResults: $('#searchResults'),
     loadingOverlay: $('#loadingOverlay'), loadingText: $('#loadingText'),
     toastContainer: $('#toastContainer'),
-    n8nEmail: $('#n8nEmail'), n8nPrompt: $('#n8nPrompt'),
-    n8nAdminEmail: $('#n8nAdminEmail'), n8nHostGmail: $('#n8nHostGmail'), n8nMaxEmails: $('#n8nMaxEmails'),
     n8nWebhookUrl: $('#n8nWebhookUrl'),
-    n8nTriggerBtn: $('#n8nTriggerBtn'), n8nStatus: $('#n8nStatus'),
+    telegramChatId: $('#telegramChatId'),
+    telegramVerifyBtn: $('#telegramVerifyBtn'),
+    n8nStatus: $('#n8nStatus'),
+    supportStream: $('#supportStream'), supportInput: $('#supportInput'), supportSend: $('#supportSend'),
+    supportNewChat: $('#supportNewChat'), supportWelcome: $('#supportWelcome'),
+    supportModalOverlay: $('#supportModalOverlay'), supportModalTitle: $('#supportModalTitle'),
+    supportModalBody: $('#supportModalBody'), supportModalCancel: $('#supportModalCancel'),
+    supportModalPrimary: $('#supportModalPrimary'),
+    btnTickets: $('#btnTickets'), ticketBadge: $('#ticketBadge'),
+    ticketsOverlay: $('#ticketsOverlay'), ticketsPanel: $('#ticketsPanel'), ticketsList: $('#ticketsList'),
+    btnCloseTickets: $('#btnCloseTickets'),
 };
 
 document.addEventListener('DOMContentLoaded', () => {
     setupDrawer(); setupNav(); setupPersona();
     setupUpload(); setupNews(); setupChat();
-    setupSearch(); setupSummary(); setupN8n(); refreshStats();
+    setupSearch(); setupSummary(); setupN8n(); setupTelegramMessageButtons();
+    setupSupport(); setupTickets();
+    refreshStats(); refreshTicketCount();
 });
 
 // ═══ DRAWER ═══
@@ -163,11 +176,13 @@ function renderChat() {
     const s = el.chatStream;
     if (!state.msgs.length) { s.innerHTML = ''; s.appendChild(mkWelcome()); return; }
     const w = s.querySelector('.welcome'); if (w) w.remove();
-    s.innerHTML = state.msgs.map(m => {
+    s.innerHTML = state.msgs.map((m, i) => {
         if (m.role === 'user') return `<div class="chat-msg user"><div class="msg-bubble">${esc(m.content)}</div></div>`;
         const src = (m.sources && m.sources.length) ? `<div class="msg-sources">${m.sources.filter(x => x.source || x.title).map(x => `<span class="source-tag">${x.url ? '🔗' : '📄'} ${esc(x.title || x.source || '')}</span>`).join('')}</div>` : '';
         const tl = (m.tools && m.tools.length) ? `<div class="msg-tools">${m.tools.join(' · ')}</div>` : '';
-        return `<div class="chat-msg assistant"><div class="msg-bubble">${esc(m.content)}${src}${tl}</div></div>`;
+        const err = (m.content || '').startsWith('Error:');
+        const tg = !err ? `<div class="msg-actions"><button type="button" class="btn-tg" data-tg-ctx="chat" data-tg-idx="${i}">Send to Telegram</button></div>` : '';
+        return `<div class="chat-msg assistant"><div class="msg-bubble">${esc(m.content)}${src}${tl}</div>${tg}</div>`;
     }).join('');
 }
 function mkWelcome() {
@@ -190,6 +205,436 @@ function addDots() {
     el.chatStream.appendChild(d); scroll(); return d;
 }
 function scroll() { requestAnimationFrame(() => { el.chatStream.scrollTop = el.chatStream.scrollHeight; }) }
+
+// ═══ SUPPORT & TICKETS ═══
+let supportModalCallback = null;
+
+function setupSupport() {
+    if (!el.supportSend || !el.supportInput) return;
+    el.supportSend.addEventListener('click', () => sendSupportMessage());
+    el.supportInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSupportMessage(); }
+    });
+    if (el.supportNewChat) el.supportNewChat.addEventListener('click', () => promptNewSupportChat());
+    if (el.supportModalCancel) el.supportModalCancel.addEventListener('click', closeSupportModal);
+    if (el.supportModalPrimary) el.supportModalPrimary.addEventListener('click', onSupportModalPrimary);
+    if (el.supportModalOverlay) {
+        el.supportModalOverlay.addEventListener('click', e => {
+            if (e.target === el.supportModalOverlay) closeSupportModal();
+        });
+    }
+    if (el.supportStream) el.supportStream.addEventListener('click', onSupportTicketActionClick);
+    document.querySelectorAll('.support-chips .chip[data-support-msg]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const m = btn.getAttribute('data-support-msg');
+            if (m && el.supportInput) { el.supportInput.value = m; sendSupportMessage(); }
+        });
+    });
+}
+
+function openSupportModal({ title, bodyHtml, primaryLabel = 'Confirm', onPrimary }) {
+    if (!el.supportModalOverlay || !el.supportModalTitle || !el.supportModalBody || !el.supportModalPrimary) return;
+    el.supportModalTitle.textContent = title;
+    el.supportModalBody.innerHTML = bodyHtml;
+    el.supportModalPrimary.textContent = primaryLabel;
+    supportModalCallback = onPrimary || null;
+    el.supportModalOverlay.classList.add('active');
+    el.supportModalOverlay.setAttribute('aria-hidden', 'false');
+}
+
+function closeSupportModal() {
+    if (!el.supportModalOverlay) return;
+    el.supportModalOverlay.classList.remove('active');
+    el.supportModalOverlay.setAttribute('aria-hidden', 'true');
+    supportModalCallback = null;
+    if (el.supportModalBody) el.supportModalBody.innerHTML = '';
+}
+
+async function onSupportModalPrimary() {
+    if (!supportModalCallback) {
+        closeSupportModal();
+        return;
+    }
+    try {
+        await supportModalCallback();
+        closeSupportModal();
+    } catch (e) {
+        toast(String(e.message || e), 'error');
+    }
+}
+
+function onSupportTicketActionClick(e) {
+    const btn = e.target.closest('.btn-ticket-act');
+    if (!btn) return;
+    const act = btn.getAttribute('data-support-act');
+    const tid = btn.getAttribute('data-ticket-id');
+    if (act === 'new_ticket') {
+        e.preventDefault();
+        promptNewSupportChat();
+    } else if (act === 'close_ticket' && tid) {
+        e.preventDefault();
+        promptCloseTicketConfirm(tid);
+    } else if (act === 'edit_ticket' && tid) {
+        e.preventDefault();
+        promptEditTicketConfirm(tid);
+    }
+}
+
+function promptNewSupportChat() {
+    openSupportModal({
+        title: 'Start a new support chat?',
+        bodyHtml: '<p>This clears the conversation in this tab. Your existing tickets stay in the Tickets panel.</p>',
+        primaryLabel: 'Confirm — new chat',
+        onPrimary: runClearSupportSession,
+    });
+}
+
+async function runClearSupportSession() {
+    try {
+        await api('/api/support/sessions/clear', {
+            method: 'POST',
+            body: JSON.stringify({ session_id: state.supportSessionId }),
+        });
+    } catch (_) { /* session may not exist server-side */ }
+    state.supportSessionId = crypto.randomUUID();
+    state.supportMsgs = [];
+    renderSupportChat();
+    const list = document.getElementById('supportMsgList');
+    if (list) list.innerHTML = '';
+    if (el.supportWelcome) el.supportWelcome.style.display = '';
+    toast('Support conversation cleared.', 'info');
+}
+
+async function promptToolbarCloseTicket() {
+    let tickets = [];
+    try {
+        const d = await api('/api/tickets');
+        tickets = d.tickets || [];
+    } catch (e) {
+        toast(e.message, 'error');
+        return;
+    }
+    if (!tickets.length) {
+        toast('No tickets yet.', 'info');
+        return;
+    }
+    const opts = tickets.map(t => {
+        const sum = (t.issue_summary || '').slice(0, 72);
+        return `<option value="${esc(t.id)}">${esc(t.id)} — ${esc(t.status)} — ${esc(sum)}</option>`;
+    }).join('');
+    openSupportModal({
+        title: 'Close a ticket',
+        bodyHtml: `
+            <p class="support-modal-hint">Confirm that the issue is resolved, then close the ticket.</p>
+            <label for="supportModalTicketSelect">Ticket</label>
+            <select id="supportModalTicketSelect">${opts}</select>
+            <label for="supportModalResolutionNote">Resolution note (optional)</label>
+            <textarea id="supportModalResolutionNote" placeholder="Briefly how it was fixed"></textarea>`,
+        primaryLabel: 'Confirm — close ticket',
+        onPrimary: async () => {
+            const sel = document.getElementById('supportModalTicketSelect');
+            const tid = sel && sel.value;
+            if (!tid) throw new Error('Pick a ticket.');
+            const note = (document.getElementById('supportModalResolutionNote') || {}).value?.trim() || '';
+            await api(`/api/tickets/${encodeURIComponent(tid)}/close`, {
+                method: 'POST',
+                body: JSON.stringify({ resolution_note: note }),
+            });
+            toast('Ticket closed.', 'success');
+            refreshTicketCount();
+        },
+    });
+}
+
+function buildTicketEditForm(t) {
+    const pr = ['Critical', 'High', 'Medium', 'Low'].map(p =>
+        `<option value="${esc(p)}"${(t.priority || '') === p ? ' selected' : ''}>${esc(p)}</option>`
+    ).join('');
+    return `
+        <p class="support-modal-hint">Change any fields, then confirm to save.</p>
+        <label for="supportEditName">Name on ticket</label>
+        <input type="text" id="supportEditName" value="${esc(t.customer_name || '')}" autocomplete="off">
+        <label for="supportEditSummary">Issue summary</label>
+        <textarea id="supportEditSummary">${esc(t.issue_summary || '')}</textarea>
+        <label for="supportEditCategory">Category</label>
+        <input type="text" id="supportEditCategory" value="${esc(t.category || '')}" autocomplete="off">
+        <label for="supportEditPriority">Priority</label>
+        <select id="supportEditPriority">${pr}</select>
+        <label for="supportEditSuggested">Suggested solution / notes</label>
+        <textarea id="supportEditSuggested">${esc(t.suggested_solution || '')}</textarea>`;
+}
+
+function collectTicketEditPatch(t) {
+    const body = {};
+    const name = (document.getElementById('supportEditName') || {}).value?.trim() ?? '';
+    const summary = (document.getElementById('supportEditSummary') || {}).value?.trim() ?? '';
+    const cat = (document.getElementById('supportEditCategory') || {}).value?.trim() ?? '';
+    const prio = (document.getElementById('supportEditPriority') || {}).value?.trim() ?? '';
+    const sugg = (document.getElementById('supportEditSuggested') || {}).value?.trim() ?? '';
+    if (name !== (t.customer_name || '').trim()) body.customer_name = name;
+    if (summary !== (t.issue_summary || '').trim()) body.issue_summary = summary;
+    if (cat !== (t.category || '').trim()) body.category = cat;
+    if (prio !== (t.priority || '').trim()) body.priority = prio;
+    if (sugg !== (t.suggested_solution || '').trim()) body.suggested_solution = sugg;
+    return body;
+}
+
+async function promptToolbarEditTicket() {
+    let tickets = [];
+    try {
+        const d = await api('/api/tickets');
+        tickets = d.tickets || [];
+    } catch (e) {
+        toast(e.message, 'error');
+        return;
+    }
+    if (!tickets.length) {
+        toast('No tickets yet.', 'info');
+        return;
+    }
+    const opts = tickets.map(t => {
+        const sum = (t.issue_summary || '').slice(0, 56);
+        return `<option value="${esc(t.id)}">${esc(t.id)} — ${esc(sum)}</option>`;
+    }).join('');
+    openSupportModal({
+        title: 'Edit a ticket',
+        bodyHtml: `
+            <label for="supportEditPick">Ticket</label>
+            <select id="supportEditPick"><option value="">— Choose —</option>${opts}</select>
+            <div id="supportEditFormMount"></div>`,
+        primaryLabel: 'Confirm — save changes',
+        onPrimary: async () => {
+            const pick = document.getElementById('supportEditPick');
+            const tid = pick && pick.value;
+            if (!tid) throw new Error('Choose a ticket.');
+            const t = tickets.find(x => x.id === tid);
+            if (!t) throw new Error('Ticket not found.');
+            const patch = collectTicketEditPatch(t);
+            if (!Object.keys(patch).length) throw new Error('Change at least one field.');
+            await api(`/api/tickets/${encodeURIComponent(tid)}`, {
+                method: 'PATCH',
+                body: JSON.stringify(patch),
+            });
+            toast('Ticket updated.', 'success');
+            refreshTicketCount();
+        },
+    });
+    const pick = document.getElementById('supportEditPick');
+    const mount = document.getElementById('supportEditFormMount');
+    if (pick && mount) {
+        pick.addEventListener('change', () => {
+            const tid = pick.value;
+            const t = tickets.find(x => x.id === tid);
+            mount.innerHTML = t ? buildTicketEditForm(t) : '';
+        });
+    }
+}
+
+async function promptCloseTicketConfirm(ticketId) {
+    openSupportModal({
+        title: 'Close ticket?',
+        bodyHtml: `
+            <p class="support-modal-hint">Confirm that <strong>${esc(ticketId)}</strong> is resolved.</p>
+            <label for="supportModalResolutionNote">Resolution note (optional)</label>
+            <textarea id="supportModalResolutionNote" placeholder="Briefly how it was fixed"></textarea>`,
+        primaryLabel: 'Confirm — close ticket',
+        onPrimary: async () => {
+            const note = (document.getElementById('supportModalResolutionNote') || {}).value?.trim() || '';
+            await api(`/api/tickets/${encodeURIComponent(ticketId)}/close`, {
+                method: 'POST',
+                body: JSON.stringify({ resolution_note: note }),
+            });
+            toast('Ticket closed.', 'success');
+            refreshTicketCount();
+        },
+    });
+}
+
+async function promptEditTicketConfirm(ticketId) {
+    let t;
+    try {
+        const d = await api(`/api/tickets/${encodeURIComponent(ticketId)}`);
+        t = d.ticket;
+    } catch (e) {
+        toast(e.message, 'error');
+        return;
+    }
+    openSupportModal({
+        title: `Edit ${esc(ticketId)}`,
+        bodyHtml: buildTicketEditForm(t),
+        primaryLabel: 'Confirm — save changes',
+        onPrimary: async () => {
+            const patch = collectTicketEditPatch(t);
+            if (!Object.keys(patch).length) throw new Error('Change at least one field.');
+            await api(`/api/tickets/${encodeURIComponent(ticketId)}`, {
+                method: 'PATCH',
+                body: JSON.stringify(patch),
+            });
+            toast('Ticket updated.', 'success');
+            refreshTicketCount();
+        },
+    });
+}
+
+function renderTicketActionButtons(actions, msgIdx) {
+    if (!actions || !actions.length) return '';
+    const parts = [];
+    for (let i = 0; i < actions.length; i++) {
+        const a = actions[i];
+        if (a.kind === 'new_ticket') {
+            parts.push(`<button type="button" class="btn-ticket-act" data-support-act="new_ticket" data-msg-idx="${msgIdx}">${esc(a.label)}</button>`);
+        } else if ((a.kind === 'close_ticket' || a.kind === 'edit_ticket') && a.ticket_id) {
+            parts.push(`<button type="button" class="btn-ticket-act" data-support-act="${esc(a.kind)}" data-ticket-id="${esc(a.ticket_id)}" data-msg-idx="${msgIdx}">${esc(a.label)}</button>`);
+        }
+    }
+    if (!parts.length) return '';
+    return `<div class="support-ticket-actions">${parts.join('')}</div>`;
+}
+
+function ensureSupportMsgList() {
+    const centered = el.supportStream.querySelector('.centered');
+    let list = document.getElementById('supportMsgList');
+    if (!list && centered) {
+        list = document.createElement('div');
+        list.id = 'supportMsgList';
+        list.className = 'support-msg-list';
+        centered.appendChild(list);
+    }
+    return list;
+}
+
+function renderSupportChat() {
+    if (!el.supportStream) return;
+    if (!state.supportMsgs.length) {
+        if (el.supportWelcome) el.supportWelcome.style.display = '';
+        const list = document.getElementById('supportMsgList');
+        if (list) list.innerHTML = '';
+        return;
+    }
+    if (el.supportWelcome) el.supportWelcome.style.display = 'none';
+    const list = ensureSupportMsgList();
+    if (!list) return;
+    list.innerHTML = state.supportMsgs.map((m, i) => {
+        if (m.role === 'user') {
+            return `<div class="chat-msg user"><div class="msg-bubble">${esc(m.content)}</div></div>`;
+        }
+        const err = (m.content || '').startsWith('Error:');
+        const acts = !err ? renderTicketActionButtons(m.ticketActions, i) : '';
+        const tg = !err ? `<div class="msg-actions"><button type="button" class="btn-tg" data-tg-ctx="support" data-tg-idx="${i}">Send to Telegram</button></div>` : '';
+        return `<div class="chat-msg assistant"><div class="msg-bubble">${formatSupportAssistant(m.content)}</div>${acts}${tg}</div>`;
+    }).join('');
+    scrollSupportToBottom();
+}
+
+function formatSupportAssistant(text) {
+    return esc(text || '').replace(/\n/g, '<br>');
+}
+
+function scrollSupportToBottom() {
+    requestAnimationFrame(() => {
+        if (el.supportStream) el.supportStream.scrollTop = el.supportStream.scrollHeight;
+    });
+}
+
+async function sendSupportMessage(txt) {
+    if (!el.supportInput || !el.supportSend) return;
+    const m = (txt || el.supportInput.value || '').trim();
+    if (!m) return;
+    el.supportInput.value = '';
+    state.supportMsgs.push({ role: 'user', content: m });
+    renderSupportChat();
+    const list = ensureSupportMsgList();
+    const dots = document.createElement('div');
+    dots.className = 'chat-msg assistant';
+    dots.innerHTML = '<div class="msg-bubble"><div class="thinking"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>';
+    if (list) list.appendChild(dots);
+    scrollSupportToBottom();
+    el.supportSend.disabled = true; el.supportInput.disabled = true;
+    try {
+        const r = await api('/api/support/chat', {
+            method: 'POST',
+            body: JSON.stringify({ message: m, session_id: state.supportSessionId }),
+        });
+        state.supportSessionId = r.session_id;
+        dots.remove();
+        state.supportMsgs.push({
+            role: 'assistant',
+            content: r.response,
+            ticketActions: r.ticket_actions || [],
+        });
+    } catch (e) {
+        dots.remove();
+        state.supportMsgs.push({ role: 'assistant', content: `Error: ${e.message}` });
+    }
+    renderSupportChat();
+    refreshTicketCount();
+    el.supportSend.disabled = false; el.supportInput.disabled = false; el.supportInput.focus();
+}
+
+function setupTickets() {
+    if (!el.btnTickets || !el.ticketsPanel) return;
+    el.btnTickets.addEventListener('click', openTicketsPanel);
+    if (el.btnCloseTickets) el.btnCloseTickets.addEventListener('click', closeTicketsPanel);
+    if (el.ticketsOverlay) el.ticketsOverlay.addEventListener('click', closeTicketsPanel);
+}
+
+function openTicketsPanel() {
+    el.ticketsPanel.classList.add('active');
+    el.ticketsOverlay.classList.add('active');
+    el.ticketsOverlay.setAttribute('aria-hidden', 'false');
+    loadTickets();
+}
+
+function closeTicketsPanel() {
+    el.ticketsPanel.classList.remove('active');
+    el.ticketsOverlay.classList.remove('active');
+    el.ticketsOverlay.setAttribute('aria-hidden', 'true');
+}
+
+async function loadTickets() {
+    if (!el.ticketsList) return;
+    try {
+        const data = await api('/api/tickets');
+        renderTickets(data.tickets || []);
+    } catch (_) {
+        el.ticketsList.innerHTML = '<div class="tickets-empty">Could not load tickets.</div>';
+    }
+}
+
+function renderTickets(tickets) {
+    if (!tickets || !tickets.length) {
+        el.ticketsList.innerHTML = '<div class="tickets-empty">No tickets yet. They appear when the assistant creates one.</div>';
+        return;
+    }
+    el.ticketsList.innerHTML = tickets.map(t => {
+        const pr = `priority-${(t.priority || 'medium').toLowerCase().replace(/\s+/g, '-')}`;
+        const date = t.created_at ? new Date(t.created_at).toLocaleString() : '';
+        return `
+            <div class="ticket-item">
+                <div class="ticket-item-header">
+                    <span class="ticket-id">${esc(t.id)}</span>
+                    <span class="ticket-status-badge open">${esc(t.status)}</span>
+                </div>
+                <p class="ticket-item-summary">${esc(t.issue_summary)}</p>
+                <div class="ticket-item-meta">
+                    <span class="ticket-meta-tag">${esc(t.category)}</span>
+                    <span class="ticket-meta-tag ${pr}">${esc(t.priority)}</span>
+                    <span class="ticket-meta-tag">${esc(date)}</span>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+async function refreshTicketCount() {
+    if (!el.ticketBadge) return;
+    try {
+        const d = await api('/api/tickets');
+        const c = d.count || 0;
+        el.ticketBadge.textContent = c;
+        el.ticketBadge.hidden = c === 0;
+        state.ticketCount = c;
+    } catch (_) { /* ignore */ }
+}
 
 // ═══ SEARCH ═══
 function setupSearch() {
@@ -224,61 +669,125 @@ function setupSummary() {
     }));
 }
 
-// ═══ n8n INTEGRATION ═══
+// ═══ n8n → Telegram ═══
 function setupN8n() {
-    if (el.n8nTriggerBtn) {
-        el.n8nTriggerBtn.addEventListener('click', triggerN8n);
-
-        // Load saved state
-        if (el.n8nWebhookUrl) el.n8nWebhookUrl.value = localStorage.getItem('n8n.webhook_url') || '';
-        if (el.n8nAdminEmail) el.n8nAdminEmail.value = localStorage.getItem('n8n.admin_email') || '';
-        if (el.n8nHostGmail) el.n8nHostGmail.value = localStorage.getItem('n8n.host_gmail') || '';
-        if (el.n8nMaxEmails) el.n8nMaxEmails.value = localStorage.getItem('n8n.max_emails') || '10';
-    }
-    // Check n8n status on load
+    if (el.n8nWebhookUrl) el.n8nWebhookUrl.value = localStorage.getItem('n8n.webhook_url') || '';
+    if (el.telegramChatId) el.telegramChatId.value = localStorage.getItem('telegram.chat_id') || '';
+    if (el.telegramVerifyBtn) el.telegramVerifyBtn.addEventListener('click', sendTelegramVerify);
     checkN8nStatus();
+}
+
+function setupTelegramMessageButtons() {
+    if (el.chatStream) el.chatStream.addEventListener('click', onTelegramButtonClick);
+    if (el.supportStream) el.supportStream.addEventListener('click', onTelegramButtonClick);
+}
+
+function onTelegramButtonClick(e) {
+    const btn = e.target.closest('.btn-tg[data-tg-ctx]');
+    if (!btn) return;
+    const ctx = btn.getAttribute('data-tg-ctx');
+    const idx = parseInt(btn.getAttribute('data-tg-idx'), 10);
+    if (ctx === 'chat' || ctx === 'support') forwardAssistantToTelegram(ctx, idx);
+}
+
+function persistTelegramSettings() {
+    if (el.n8nWebhookUrl) localStorage.setItem('n8n.webhook_url', el.n8nWebhookUrl.value.trim());
+    if (el.telegramChatId) localStorage.setItem('telegram.chat_id', el.telegramChatId.value.trim());
 }
 
 async function checkN8nStatus() {
     try {
         const s = await api('/api/n8n/status');
-        if (el.n8nStatus) {
-            if (s.configured) {
-                el.n8nStatus.textContent = 'Connected: ' + s.webhook_url;
-                el.n8nStatus.hidden = false;
-            }
+        if (el.n8nStatus && s.configured) {
+            el.n8nStatus.textContent = (s.source ? `${s.source}: ` : '') + (s.webhook_url || 'set');
+            el.n8nStatus.hidden = false;
         }
-    } catch (e) { /* n8n not configured, that's fine */ }
+    } catch (e) { /* optional */ }
 }
 
-async function triggerN8n() {
-    const email = el.n8nEmail ? el.n8nEmail.value.trim() : '';
-    const prompt = el.n8nPrompt ? el.n8nPrompt.value.trim() : '';
-    const admin_email = el.n8nAdminEmail ? el.n8nAdminEmail.value.trim() : '';
-    const host_gmail = el.n8nHostGmail ? el.n8nHostGmail.value.trim() : '';
-    const max_emails = el.n8nMaxEmails ? parseInt(el.n8nMaxEmails.value) || 10 : 10;
+async function sendTelegramVerify() {
     const webhook_url = el.n8nWebhookUrl ? el.n8nWebhookUrl.value.trim() : '';
-
-    if (!email) { toast('Enter an email address.', 'info'); return; }
-    if (!prompt) { toast('Enter what to analyze.', 'info'); return; }
-
-    // Save state
-    localStorage.setItem('n8n.webhook_url', webhook_url);
-    localStorage.setItem('n8n.admin_email', admin_email);
-    localStorage.setItem('n8n.host_gmail', host_gmail);
-    localStorage.setItem('n8n.max_emails', max_emails);
-
-    loading('Triggering n8n workflow...');
+    const telegram_chat_id = el.telegramChatId ? el.telegramChatId.value.trim() : '';
+    if (!webhook_url) { toast('Enter your n8n webhook URL.', 'info'); return; }
+    if (!telegram_chat_id) { toast('Enter your Telegram chat ID.', 'info'); return; }
+    persistTelegramSettings();
+    loading('Calling n8n…');
     try {
-        const r = await api('/api/n8n/trigger', {
+        await api('/api/n8n/telegram', {
             method: 'POST',
-            body: JSON.stringify({ email, prompt, admin_email, host_gmail, max_emails, webhook_url }),
+            body: JSON.stringify({
+                webhook_url,
+                telegram_chat_id,
+                action: 'verify_telegram',
+                assistant_message: 'IntelliDigest: your Telegram link works. Saved replies will arrive here.',
+                channel: 'research_chat',
+            }),
         });
-        toast('n8n workflow triggered! Results will appear in your KB.', 'success');
-        if (el.n8nEmail) el.n8nEmail.value = '';
-        if (el.n8nPrompt) el.n8nPrompt.value = '';
-        // Refresh stats after a delay to catch ingested results
-        setTimeout(refreshStats, 5000);
+        toast('Check Telegram for the test message.', 'success');
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+    done();
+}
+
+async function forwardAssistantToTelegram(ctx, msgIndex) {
+    const webhook_url = el.n8nWebhookUrl ? el.n8nWebhookUrl.value.trim() : '';
+    const telegram_chat_id = el.telegramChatId ? el.telegramChatId.value.trim() : '';
+    if (!webhook_url) {
+        toast('Add your n8n webhook URL in Tools.', 'info');
+        el.toolsBtn && el.toolsBtn.click();
+        return;
+    }
+    if (!telegram_chat_id) {
+        toast('Add your Telegram chat ID in Tools.', 'info');
+        el.toolsBtn && el.toolsBtn.click();
+        return;
+    }
+    persistTelegramSettings();
+
+    let assistant_message = '';
+    let user_message = '';
+    let persona = state.persona;
+    let channel = 'research_chat';
+
+    if (ctx === 'chat') {
+        const m = state.msgs[msgIndex];
+        if (!m || m.role !== 'assistant') return;
+        assistant_message = m.content;
+        if (msgIndex > 0 && state.msgs[msgIndex - 1].role === 'user') {
+            user_message = state.msgs[msgIndex - 1].content;
+        }
+    } else {
+        const m = state.supportMsgs[msgIndex];
+        if (!m || m.role !== 'assistant') return;
+        assistant_message = m.content;
+        channel = 'support_chat';
+        persona = '';
+        if (msgIndex > 0 && state.supportMsgs[msgIndex - 1].role === 'user') {
+            user_message = state.supportMsgs[msgIndex - 1].content;
+        }
+    }
+
+    if ((assistant_message || '').startsWith('Error:')) {
+        toast('Cannot send error messages to Telegram.', 'info');
+        return;
+    }
+
+    loading('Sending to Telegram…');
+    try {
+        await api('/api/n8n/telegram', {
+            method: 'POST',
+            body: JSON.stringify({
+                webhook_url,
+                telegram_chat_id,
+                action: 'save_message',
+                assistant_message,
+                user_message,
+                persona,
+                channel,
+            }),
+        });
+        toast('Sent via n8n. Check Telegram.', 'success');
     } catch (e) {
         toast(e.message, 'error');
     }

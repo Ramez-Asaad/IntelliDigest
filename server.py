@@ -14,14 +14,22 @@ Endpoints:
   DELETE /api/clear       — Clear the knowledge base
   DELETE /api/chat/clear  — Clear chat history
   GET  /api/personas      — List available personas
-  POST /api/n8n/webhook   — Receive email insights from n8n workflow
-  POST /api/n8n/trigger   — Trigger n8n email analysis workflow
-  GET  /api/n8n/status    — n8n integration status
+  POST /api/n8n/webhook   — Receive content from n8n to ingest into the KB
+  POST /api/n8n/telegram  — Forward verify/save payloads to your n8n → Telegram workflow
+  GET  /api/n8n/status    — n8n webhook URL configured (Telegram pipeline)
+  POST /api/support/chat — Support agent (tools + tickets)
+  GET  /api/tickets       — List support tickets
+  GET  /api/tickets/{id}  — Get one ticket
+  PATCH /api/tickets/{id} — Update ticket fields
+  POST /api/tickets/{id}/close — Close ticket (optional resolution note)
+  POST /api/support/sessions/clear — Clear support session memory
 """
 
+import asyncio
 import os
 import sys
 import tempfile
+import uuid
 import httpx
 from contextlib import asynccontextmanager
 
@@ -33,7 +41,7 @@ from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -48,6 +56,15 @@ from chains.qa_chain import QAChain
 from memory.conversation import ConversationMemory
 from personas.personas import PERSONAS, DEFAULT_PERSONA, get_persona_list
 from agents.research_agent import create_research_agent
+from support.agent import clear_support_agent, process_support_message
+from support.bootstrap_kb import bootstrap_support_knowledge_base
+from support.memory import clear_memory as clear_support_memory
+from support.tickets import (
+    finalize_close_ticket,
+    get_all_tickets,
+    get_ticket_by_id,
+    update_ticket_in_db,
+)
 
 
 # ── Global State ─────────────────────────────────────────────────────────────
@@ -70,6 +87,9 @@ async def lifespan(app: FastAPI):
         print("[WARNING] GROQ_API_KEY not set - some features will be unavailable.")
     else:
         vectorstore = VectorStoreEngine()
+        sk = bootstrap_support_knowledge_base(vectorstore)
+        if sk:
+            print(f"[OK] Support KB: ingested {sk} chunk(s) into intellidigest_support.")
         memory = ConversationMemory(groq_api_key=groq_key)
         agent_fn = create_research_agent(vectorstore)
         summarizer = Summarizer(groq_api_key=groq_key)
@@ -140,14 +160,44 @@ class N8nWebhookPayload(BaseModel):
     prompt: str = ""
 
 
-class N8nTriggerRequest(BaseModel):
-    """Request from the frontend to trigger an n8n workflow."""
-    email: str
-    prompt: str
-    admin_email: str = "admin@company.com"
-    host_gmail: str = ""
-    max_emails: int = 10
+class N8nTelegramRequest(BaseModel):
+    """Forward to n8n so a workflow can send Telegram messages (verify link or save a reply)."""
+
     webhook_url: str = ""
+    telegram_chat_id: str
+    action: str = "save_message"
+    assistant_message: str = ""
+    user_message: str = ""
+    persona: str = ""
+    channel: str = "research_chat"
+
+
+class SupportChatRequest(BaseModel):
+    message: str
+    session_id: str | None = None
+
+
+class SupportChatResponse(BaseModel):
+    response: str
+    session_id: str
+    ticket_actions: list[dict] = Field(default_factory=list)
+
+
+class TicketPatchRequest(BaseModel):
+    customer_name: str | None = None
+    issue_summary: str | None = None
+    category: str | None = None
+    priority: str | None = None
+    suggested_solution: str | None = None
+    status: str | None = None
+
+
+class TicketCloseRequest(BaseModel):
+    resolution_note: str = ""
+
+
+class SupportSessionClearRequest(BaseModel):
+    session_id: str = "default"
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────
@@ -346,6 +396,130 @@ async def get_chat_history():
     return {"history": memory.get_display_history()}
 
 
+# ── Support & ticketing (lab 6 integration) ─────────────────────────────────
+
+@app.post("/api/support/chat", response_model=SupportChatResponse)
+async def support_chat(req: SupportChatRequest):
+    """Customer-support agent with KB search, classification, and ticket creation."""
+    if not os.getenv("GROQ_API_KEY"):
+        raise HTTPException(status_code=503, detail="GROQ_API_KEY not set.")
+    if not vectorstore:
+        raise HTTPException(status_code=503, detail="Vector store not initialized.")
+    msg = req.message.strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    sid = (req.session_id or "").strip() or str(uuid.uuid4())
+    response_text, ticket_actions = await asyncio.to_thread(
+        process_support_message,
+        msg,
+        sid,
+        vectorstore,
+    )
+    return SupportChatResponse(
+        response=response_text,
+        session_id=sid,
+        ticket_actions=ticket_actions,
+    )
+
+
+@app.get("/api/tickets")
+async def list_tickets():
+    """List all support tickets (newest first)."""
+    try:
+        tickets = await asyncio.to_thread(get_all_tickets)
+        return {"tickets": tickets, "count": len(tickets)}
+    except Exception as e:
+        print(f"[API Error] List tickets: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve tickets.")
+
+
+@app.get("/api/tickets/{ticket_id}")
+async def get_ticket(ticket_id: str):
+    """Get a single ticket by id."""
+    try:
+        t = await asyncio.to_thread(get_ticket_by_id, ticket_id)
+        if not t:
+            raise HTTPException(
+                status_code=404, detail=f"Ticket '{ticket_id}' not found."
+            )
+        return {"ticket": t}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[API Error] Get ticket {ticket_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve ticket.")
+
+
+@app.patch("/api/tickets/{ticket_id}")
+async def patch_ticket(ticket_id: str, body: TicketPatchRequest):
+    """Update ticket fields (only provided keys are applied)."""
+    patch = body.model_dump(exclude_unset=True, exclude_none=True)
+    if not patch:
+        raise HTTPException(status_code=400, detail="No fields to update.")
+    try:
+
+        def _apply():
+            return update_ticket_in_db(ticket_id, **patch)
+
+        row = await asyncio.to_thread(_apply)
+        if not row:
+            raise HTTPException(
+                status_code=404, detail=f"Ticket '{ticket_id}' not found."
+            )
+        return {"ticket": row}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[API Error] Patch ticket {ticket_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update ticket.")
+
+
+@app.post("/api/tickets/{ticket_id}/close")
+async def close_ticket_route(
+    ticket_id: str,
+    body: TicketCloseRequest = TicketCloseRequest(),
+):
+    """Mark ticket closed; optional resolution note stored on the ticket."""
+    note = (body.resolution_note or "").strip()
+
+    def _close():
+        return finalize_close_ticket(ticket_id, note)
+
+    try:
+        row = await asyncio.to_thread(_close)
+        if not row:
+            raise HTTPException(
+                status_code=404, detail=f"Ticket '{ticket_id}' not found."
+            )
+        return {"ticket": row}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[API Error] Close ticket {ticket_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to close ticket.")
+
+
+@app.post("/api/support/sessions/clear")
+async def support_sessions_clear(req: SupportSessionClearRequest):
+    """Clear LangChain memory and cached executor for a support session."""
+    if not vectorstore:
+        raise HTTPException(status_code=503, detail="Vector store not initialized.")
+    try:
+        cleared_mem = clear_support_memory(req.session_id)
+        clear_support_agent(req.session_id, vectorstore)
+        return {
+            "success": True,
+            "message": (
+                "Session cleared successfully."
+                if cleared_mem
+                else "No active conversation memory for this session."
+            ),
+        }
+    except Exception as e:
+        print(f"[API Error] Clear support session: {e}")
+        raise HTTPException(status_code=500, detail="Failed to clear session.")
+
+
 # ── n8n Integration ──────────────────────────────────────────────────────────
 
 @app.post("/api/n8n/webhook")
@@ -384,54 +558,76 @@ async def n8n_webhook(payload: N8nWebhookPayload):
     }
 
 
-@app.post("/api/n8n/trigger")
-async def n8n_trigger(req: N8nTriggerRequest):
-    """Trigger the n8n email analysis workflow from the UI."""
-    n8n_url = req.webhook_url or os.getenv("N8N_WEBHOOK_URL", "")
+@app.post("/api/n8n/telegram")
+async def n8n_telegram_forward(req: N8nTelegramRequest):
+    """
+    POST JSON to your n8n webhook. Typical workflow: Webhook → IF action → Telegram Send Message.
+
+    Actions:
+      - verify_telegram — ping the user so they know the chat id is correct
+      - save_message — send the chosen assistant reply (and optional user question) to Telegram
+    """
+    n8n_url = (
+        (req.webhook_url or "").strip()
+        or os.getenv("N8N_TELEGRAM_WEBHOOK_URL", "").strip()
+        or os.getenv("N8N_WEBHOOK_URL", "").strip()
+    )
     if not n8n_url:
         raise HTTPException(
             status_code=503,
-            detail="n8n Webhook URL not set. Enter it in the Tools drawer under Email Insights.",
+            detail="n8n webhook URL not set. Add it under Tools → Telegram, or set N8N_TELEGRAM_WEBHOOK_URL / N8N_WEBHOOK_URL.",
         )
 
+    chat_id = req.telegram_chat_id.strip()
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="telegram_chat_id is required.")
+
+    action = req.action if req.action in ("verify_telegram", "save_message") else "save_message"
+    payload = {
+        "action": action,
+        "telegram_chat_id": chat_id,
+        "assistant_message": req.assistant_message,
+        "user_message": req.user_message,
+        "persona": req.persona,
+        "channel": req.channel if req.channel in ("research_chat", "support_chat") else "research_chat",
+        "title": "IntelliDigest",
+    }
+
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                n8n_url,
-                json={
-                    "body": {
-                        "target_email": req.email,
-                        "prompt": req.prompt,
-                        "admin_email": req.admin_email,
-                        "host_gmail": req.host_gmail,
-                        "max_emails": req.max_emails
-                    },
-                    "message": {
-                        "text": f"{req.prompt} {req.email}",
-                        "chat": {"id": "intellidigest-ui"}
-                    }
-                },
-            )
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(n8n_url, json=payload)
             response.raise_for_status()
-            return {
-                "status": "triggered",
-                "n8n_response": response.json() if response.headers.get("content-type", "").startswith("application/json") else response.text,
-            }
+            body = None
+            ct = response.headers.get("content-type", "")
+            if ct.startswith("application/json"):
+                try:
+                    body = response.json()
+                except Exception:
+                    body = response.text
+            else:
+                body = response.text
+            return {"status": "forwarded", "n8n_response": body}
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="n8n workflow timed out.")
+        raise HTTPException(status_code=504, detail="n8n webhook timed out.")
     except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=502, detail=f"n8n returned {e.response.status_code}: {e.response.text[:200]}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"n8n returned {e.response.status_code}: {e.response.text[:200]}",
+        )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to reach n8n: {str(e)}")
 
 
 @app.get("/api/n8n/status")
 async def n8n_status():
-    """Check if n8n integration is configured."""
-    url = os.getenv("N8N_WEBHOOK_URL", "")
+    """Whether a Telegram webhook URL is available (env or UI-driven)."""
+    tg = os.getenv("N8N_TELEGRAM_WEBHOOK_URL", "").strip()
+    legacy = os.getenv("N8N_WEBHOOK_URL", "").strip()
+    url = tg or legacy
     return {
         "configured": bool(url),
-        "webhook_url": url[:30] + "..." if len(url) > 30 else url,
+        "webhook_url": url[:40] + "..." if len(url) > 40 else url,
+        "source": "N8N_TELEGRAM_WEBHOOK_URL" if tg else ("N8N_WEBHOOK_URL" if legacy else ""),
     }
 
 

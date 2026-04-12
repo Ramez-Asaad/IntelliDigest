@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 chroma_db/
+data/
 .venv/
 venv/
 user_data.json

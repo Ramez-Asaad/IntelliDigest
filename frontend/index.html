@@ -42,9 +42,21 @@
                 <button class="nav-tab active" data-tab="chat">Chat</button>
                 <button class="nav-tab" data-tab="news">News</button>
                 <button class="nav-tab" data-tab="search">Search</button>
+                <button class="nav-tab" data-tab="support">Support</button>
             </nav>
             <div class="topbar-right">
                 <div class="topbar-stat"><span class="pulse-dot"></span><b id="topStatChunks">0</b> chunks</div>
+                <button type="button" class="topbar-action topbar-tickets" id="btnTickets" title="Tickets"
+                    aria-label="View tickets">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.8">
+                        <rect x="3" y="4" width="18" height="16" rx="2" />
+                        <line x1="3" y1="10" x2="21" y2="10" />
+                        <line x1="8" y1="4" x2="8" y2="10" />
+                        <line x1="16" y1="4" x2="16" y2="10" />
+                    </svg>
+                    <span class="ticket-badge" id="ticketBadge" hidden>0</span>
+                </button>
                 <button class="topbar-action" id="toolsBtn" title="Tools & Settings">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="1.8">
@@ -105,16 +117,19 @@
                 <button class="btn btn-primary btn-block" id="newsBtn">Fetch Articles</button>
             </section>
             <section class="tool-section">
-                <label class="tool-label">Email Insights <span class="badge">n8n</span></label>
+                <label class="tool-label">Telegram via n8n <span class="badge">n8n</span></label>
+                <p class="tool-hint">Save assistant replies to Telegram. Point this at a Webhook workflow that sends a
+                    <strong>Telegram</strong> message (see README).</p>
                 <div class="n8n-settings">
-                    <input type="text" id="n8nWebhookUrl" class="field field-sm" placeholder="n8n Webhook URL">
-                    <input type="text" id="n8nAdminEmail" class="field field-sm" placeholder="Admin Email (Reports to)">
-                    <input type="text" id="n8nHostGmail" class="field field-sm" placeholder="Host Gmail Filter">
-                    <input type="number" id="n8nMaxEmails" class="field field-sm" placeholder="Max Emails (e.g. 10)">
+                    <input type="url" id="n8nWebhookUrl" class="field field-sm" autocomplete="off"
+                        placeholder="n8n Webhook URL (Telegram workflow)">
+                    <input type="text" id="telegramChatId" class="field field-sm" inputmode="numeric" autocomplete="off"
+                        placeholder="Your Telegram chat ID">
                 </div>
-                <input type="text" id="n8nEmail" class="field" placeholder="Target Email to summarize...">
-                <input type="text" id="n8nPrompt" class="field" placeholder="What to analyze...">
-                <button class="btn btn-primary btn-block" id="n8nTriggerBtn">Analyze Emails</button>
+                <p class="tool-hint tool-hint-sm">Get your numeric chat ID from <b>@userinfobot</b> or <b>@RawDataBot</b>
+                    on Telegram (send any message, copy <code>id</code>).</p>
+                <button type="button" class="btn btn-ghost btn-block" id="telegramVerifyBtn">Send test message</button>
+                <p class="tool-hint tool-hint-sm">Confirms your chat ID: n8n should deliver a short ping to this chat.</p>
                 <div id="n8nStatus" class="n8n-status" hidden></div>
             </section>
             <section class="tool-section">
@@ -222,8 +237,8 @@
                                             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
                                         </svg></div>
                                     <div class="feature-info">
-                                        <strong>n8n Automation</strong>
-                                        <span>Email insight extraction</span>
+                                        <strong>Telegram saves</strong>
+                                        <span>n8n forwards highlights</span>
                                     </div>
                                 </div>
                             </div>
@@ -328,7 +343,70 @@
                 </div>
             </div>
         </div>
+
+        <!-- SUPPORT VIEW -->
+        <div class="view" id="supportView">
+            <div class="stream support-stream" id="supportStream">
+                <div class="centered">
+                    <div class="welcome support-welcome" id="supportWelcome">
+                        <div class="welcome-glow"></div>
+                        <div class="welcome-brand">💬</div>
+                        <h3>How can we help?</h3>
+                        <p>This assistant knows <strong>IntelliDigest</strong>—Chat, News, Search, uploads, API keys,
+                            Docker, and tickets. Ask about errors, setup, or saving replies to Telegram.</p>
+                        <div class="chip-row support-chips">
+                            <button type="button" class="chip" data-support-msg="Chat says the agent is not initialized or I get 503. What should I check?">Agent / 503 error</button>
+                            <button type="button" class="chip" data-support-msg="How do I upload documents and use them in Chat?">Upload &amp; KB</button>
+                            <button type="button" class="chip" data-support-msg="News fetch fails or says NEWSAPI_KEY is not set">News API key</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="composer-bar">
+                <div class="centered">
+                    <div class="composer">
+                        <input type="text" id="supportInput" class="composer-field" placeholder="Describe your issue..."
+                            autocomplete="off">
+                        <button type="button" class="composer-btn" id="supportSend" title="Send">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.2">
+                                <line x1="22" y1="2" x2="11" y2="13" />
+                                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="support-composer-meta">
+                        <button type="button" class="btn btn-ghost btn-sm" id="supportNewChat">New conversation</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <div class="support-modal-overlay" id="supportModalOverlay" aria-hidden="true">
+        <div class="support-modal" role="dialog" aria-modal="true" aria-labelledby="supportModalTitle">
+            <h4 id="supportModalTitle">Confirm</h4>
+            <div id="supportModalBody" class="support-modal-body"></div>
+            <div class="support-modal-actions">
+                <button type="button" class="btn btn-ghost" id="supportModalCancel">Cancel</button>
+                <button type="button" class="btn btn-primary" id="supportModalPrimary">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="tickets-overlay" id="ticketsOverlay" aria-hidden="true"></div>
+    <aside class="tickets-panel" id="ticketsPanel" aria-label="Support tickets">
+        <div class="tickets-panel-head">
+            <h3>Support tickets</h3>
+            <button type="button" class="drawer-close" id="btnCloseTickets" aria-label="Close tickets panel">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+            </button>
+        </div>
+        <div class="tickets-panel-body" id="ticketsList"></div>
+    </aside>
 
     <!-- Bottom Nav (mobile) -->
     <nav class="bottom-bar" id="bottomBar">
@@ -351,6 +429,14 @@
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
             Search
+        </button>
+        <button class="bb-btn" data-tab="support">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 6H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2z" />
+                <path d="M9 10h6M9 14h4" />
+            </svg>
+            Support
         </button>
     </nav>
 

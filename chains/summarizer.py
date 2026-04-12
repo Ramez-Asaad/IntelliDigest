@@ -14,7 +14,6 @@ Derived from Lab 4 — adapted with LCEL chain composition.
 
 import os
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
@@ -22,6 +21,7 @@ load_dotenv()
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from chains.llm_factory import make_groq_with_ollama_fallback
 from personas.personas import PERSONAS, DEFAULT_PERSONA
 
 
@@ -38,10 +38,10 @@ class Summarizer:
             raise ValueError(
                 "Groq API key is required. Set GROQ_API_KEY in your .env file."
             )
-        self.llm = ChatGroq(
-            groq_api_key=api_key,
+        self.llm = make_groq_with_ollama_fallback(
             model_name=model,
             temperature=0.3,
+            groq_api_key=api_key,
         )
         self.parser = StrOutputParser()
 
