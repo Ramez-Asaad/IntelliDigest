@@ -16,11 +16,11 @@ from support.memory import get_memory
 from support.prompts import SUPPORT_SYSTEM_PROMPT
 from support.retriever import make_search_support_knowledge_tool
 from support.sanitize_reply import sanitize_support_reply
-from support.tickets import get_ticket_by_id, get_ticket_tool
+from support.tickets import get_ticket_by_id, make_create_ticket_tool
 from support.ui_tools import (
-    get_show_close_ticket_ui_tool,
-    get_show_edit_ticket_ui_tool,
     get_show_new_chat_ui_tool,
+    make_show_close_ticket_ui_tool,
+    make_show_edit_ticket_ui_tool,
 )
 from vectorstore.engine import VectorStoreEngine
 
@@ -57,7 +57,7 @@ def _iter_tool_invocations(intermediate_steps):
                     yield nm, _normalize_tool_input(tc.get("args") or tc.get("input") or {})
 
 
-def collect_ui_actions_from_steps(intermediate_steps) -> list[dict]:
+def collect_ui_actions_from_steps(intermediate_steps, user_id: str) -> list[dict]:
     """
     Attach close/edit/new-chat buttons only when the model invoked the matching UI tools.
     Ticket ids are validated against SQLite (must exist; close not shown if already closed).
@@ -67,7 +67,7 @@ def collect_ui_actions_from_steps(intermediate_steps) -> list[dict]:
     for name, inp in _iter_tool_invocations(intermediate_steps):
         if name == "show_close_ticket_confirmation_ui":
             tid = str(inp.get("ticket_id", "")).strip().upper()
-            row = get_ticket_by_id(tid) if tid else None
+            row = get_ticket_by_id(tid, user_id) if tid else None
             if not row:
                 continue
             if (row.get("status") or "").strip().lower() == "closed":
@@ -85,7 +85,7 @@ def collect_ui_actions_from_steps(intermediate_steps) -> list[dict]:
             )
         elif name == "show_edit_ticket_confirmation_ui":
             tid = str(inp.get("ticket_id", "")).strip().upper()
-            if not tid or not get_ticket_by_id(tid):
+            if not tid or not get_ticket_by_id(tid, user_id):
                 continue
             key = f"edit:{tid}"
             if key in seen:
@@ -106,7 +106,9 @@ def collect_ui_actions_from_steps(intermediate_steps) -> list[dict]:
     return actions
 
 
-def _create_agent(session_id: str, vectorstore_engine: VectorStoreEngine) -> AgentExecutor:
+def _create_agent(
+    session_id: str, vectorstore_engine: VectorStoreEngine, user_id: str
+) -> AgentExecutor:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise ValueError("GROQ_API_KEY not set in environment.")
@@ -122,9 +124,9 @@ def _create_agent(session_id: str, vectorstore_engine: VectorStoreEngine) -> Age
     tools = [
         kb_tool,
         get_classifier_tool(),
-        get_ticket_tool(),
-        get_show_close_ticket_ui_tool(),
-        get_show_edit_ticket_ui_tool(),
+        make_create_ticket_tool(user_id),
+        make_show_close_ticket_ui_tool(user_id),
+        make_show_edit_ticket_ui_tool(user_id),
         get_show_new_chat_ui_tool(),
     ]
 
@@ -138,7 +140,7 @@ def _create_agent(session_id: str, vectorstore_engine: VectorStoreEngine) -> Age
     )
 
     agent = create_tool_calling_agent(llm, tools, prompt)
-    memory = get_memory(session_id)
+    memory = get_memory(f"{user_id}:{session_id}")
 
     return AgentExecutor(
         agent=agent,
@@ -154,15 +156,19 @@ def _create_agent(session_id: str, vectorstore_engine: VectorStoreEngine) -> Age
     )
 
 
-def get_support_agent(session_id: str, vectorstore_engine: VectorStoreEngine) -> AgentExecutor:
-    cache_key = f"{session_id}:{id(vectorstore_engine)}"
+def get_support_agent(
+    session_id: str, vectorstore_engine: VectorStoreEngine, user_id: str
+) -> AgentExecutor:
+    cache_key = f"{user_id}:{session_id}:{id(vectorstore_engine)}"
     if cache_key not in _agent_cache:
-        _agent_cache[cache_key] = _create_agent(session_id, vectorstore_engine)
+        _agent_cache[cache_key] = _create_agent(session_id, vectorstore_engine, user_id)
     return _agent_cache[cache_key]
 
 
-def clear_support_agent(session_id: str, vectorstore_engine: VectorStoreEngine) -> None:
-    cache_key = f"{session_id}:{id(vectorstore_engine)}"
+def clear_support_agent(
+    session_id: str, vectorstore_engine: VectorStoreEngine, user_id: str
+) -> None:
+    cache_key = f"{user_id}:{session_id}:{id(vectorstore_engine)}"
     if cache_key in _agent_cache:
         del _agent_cache[cache_key]
 
@@ -171,16 +177,19 @@ def process_support_message(
     user_message: str,
     session_id: str,
     vectorstore_engine: VectorStoreEngine,
+    user_id: str,
 ) -> tuple[str, list[dict]]:
     try:
-        agent = get_support_agent(session_id, vectorstore_engine)
+        agent = get_support_agent(session_id, vectorstore_engine, user_id)
         result = agent.invoke({"input": user_message})
         out = result.get(
             "output",
             "I apologize, but I couldn't process your request. Please try again.",
         )
         cleaned = sanitize_support_reply(out)
-        ui_actions = collect_ui_actions_from_steps(result.get("intermediate_steps"))
+        ui_actions = collect_ui_actions_from_steps(
+            result.get("intermediate_steps"), user_id
+        )
         return cleaned, ui_actions
     except Exception as e:
         error_msg = str(e)

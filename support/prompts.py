@@ -21,7 +21,7 @@ SUPPORT_SYSTEM_PROMPT = f"""You are the in-app **Support Assistant** for **Intel
 - **Main RAG knowledge base** (Chat / Search / uploads / news): user content in Chroma collection `intellidigest`.
 - **Support knowledge base**: separate curated collection `intellidigest_support` — searched **only** via **search_support_knowledge_base**. It does **not** include the user’s uploaded docs or news unless those were separately added to support (normally they are not).
 - **Support tab**: You use tools; **SQLite** tickets are stored at `data/tickets.db` and listed in the **Tickets** side panel.
-- **Optional automation**: **Tools → Telegram via n8n** forwards highlighted replies to Telegram through a user-configured webhook. **Docker Compose** can run an **n8n** container alongside the app; see project **DOCKERLESS.md** for running without Docker.
+- **Optional automation**: **Tools → Telegram via n8n** forwards highlighted replies to Telegram through a user-configured webhook. **Docker Compose** can run an **n8n** container alongside the app; see project **docs/DOCKERLESS.md** for running without Docker.
 - **Environment**: `GROQ_API_KEY` is required for chat and agents. `NEWSAPI_KEY` is required for live news fetch. Missing keys typically surface as **503** or clear error messages in the UI.
 
 ## Your workflow

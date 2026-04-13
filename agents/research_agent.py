@@ -49,6 +49,7 @@ def create_research_agent(vectorstore_engine, news_retriever=None, summarizer=No
         user_query: str,
         persona_id: str = DEFAULT_PERSONA,
         chat_history: str = "",
+        user_id: str = "",
     ) -> dict:
         """
         The agent analyzes the query and decides how to respond:
@@ -58,8 +59,8 @@ def create_research_agent(vectorstore_engine, news_retriever=None, summarizer=No
         """
         persona = PERSONAS.get(persona_id, PERSONAS[DEFAULT_PERSONA])
 
-        # Step 1: Retrieve relevant context from knowledge base
-        docs = vectorstore_engine.search_similar(user_query, k=5)
+        # Step 1: Retrieve relevant context from knowledge base (per-user collection)
+        docs = vectorstore_engine.search_similar(user_id, user_query, k=5)
         kb_context = ""
         sources = []
 

@@ -15,6 +15,14 @@ from support.config import DATABASE_PATH, ISSUE_CATEGORIES
 _TICKET_CATEGORY_HELP = "Exactly one of: " + ", ".join(ISSUE_CATEGORIES)
 
 
+def _migrate_user_id_column(conn: sqlite3.Connection) -> None:
+    cur = conn.execute("PRAGMA table_info(tickets)")
+    cols = [row[1] for row in cur.fetchall()]
+    if "user_id" not in cols:
+        conn.execute("ALTER TABLE tickets ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+
+
 def _get_connection():
     """Get a SQLite connection, creating the DB if needed."""
     os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
@@ -36,6 +44,7 @@ def _get_connection():
         """
     )
     conn.commit()
+    _migrate_user_id_column(conn)
     return conn
 
 
@@ -43,6 +52,7 @@ def create_ticket_in_db(
     customer_name: str,
     issue_summary: str,
     category: str,
+    user_id: str,
     priority: str = "Medium",
     suggested_solution: str = "",
 ) -> dict:
@@ -54,8 +64,8 @@ def create_ticket_in_db(
         conn.execute(
             """INSERT INTO tickets
                (id, customer_name, issue_summary, category, priority,
-                suggested_solution, status, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, 'Open', ?, ?)""",
+                suggested_solution, status, created_at, updated_at, user_id)
+               VALUES (?, ?, ?, ?, ?, ?, 'Open', ?, ?, ?)""",
             (
                 ticket_id,
                 customer_name,
@@ -65,11 +75,13 @@ def create_ticket_in_db(
                 suggested_solution,
                 now,
                 now,
+                user_id,
             ),
         )
         conn.commit()
         return {
             "id": ticket_id,
+            "user_id": user_id,
             "customer_name": customer_name,
             "issue_summary": issue_summary,
             "category": category,
@@ -92,60 +104,75 @@ class TicketInput(BaseModel):
     )
 
 
-@tool("create_ticket", args_schema=TicketInput)
-def create_ticket_tool_func(
-    customer_name: str,
-    issue_summary: str,
-    category: str,
-    priority: str = "Medium",
-    suggested_solution: str = "",
-) -> str:
-    """
-    **This is the only way to create a real ticket id.** Persist a row in SQLite (Tickets panel).
-    After the user confirms they want a ticket filed, you **must** call this tool—do not
-    describe a fake `TKT-...` id in prose without calling it. Use after intake (name, scope,
-    evidence) unless they gave a full brief and asked to file immediately.
-    """
-    try:
-        ticket = create_ticket_in_db(
-            customer_name=customer_name,
-            issue_summary=issue_summary,
-            category=category,
-            priority=priority,
-            suggested_solution=suggested_solution,
-        )
-        return (
-            f"✅ Ticket Created Successfully!\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"Ticket ID: {ticket['id']}\n"
-            f"Customer: {ticket['customer_name']}\n"
-            f"Category: {ticket['category']}\n"
-            f"Priority: {ticket['priority']}\n"
-            f"Status: {ticket['status']}\n"
-            f"Summary: {ticket['issue_summary']}\n"
-            f"Suggested Solution: {ticket['suggested_solution']}\n"
-            f"Created: {ticket['created_at']}\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
-    except Exception as e:
-        return f"Error creating ticket: {str(e)}"
+def make_create_ticket_tool(user_id: str):
+    """LangChain tool bound to the authenticated user."""
+
+    @tool("create_ticket", args_schema=TicketInput)
+    def create_ticket_tool_func(
+        customer_name: str,
+        issue_summary: str,
+        category: str,
+        priority: str = "Medium",
+        suggested_solution: str = "",
+    ) -> str:
+        """
+        **This is the only way to create a real ticket id.** Persist a row in SQLite (Tickets panel).
+        After the user confirms they want a ticket filed, you **must** call this tool—do not
+        describe a fake `TKT-...` id in prose without calling it. Use after intake (name, scope,
+        evidence) unless they gave a full brief and asked to file immediately.
+        """
+        try:
+            ticket = create_ticket_in_db(
+                customer_name=customer_name,
+                issue_summary=issue_summary,
+                category=category,
+                user_id=user_id,
+                priority=priority,
+                suggested_solution=suggested_solution,
+            )
+            return (
+                f"✅ Ticket Created Successfully!\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"Ticket ID: {ticket['id']}\n"
+                f"Customer: {ticket['customer_name']}\n"
+                f"Category: {ticket['category']}\n"
+                f"Priority: {ticket['priority']}\n"
+                f"Status: {ticket['status']}\n"
+                f"Summary: {ticket['issue_summary']}\n"
+                f"Suggested Solution: {ticket['suggested_solution']}\n"
+                f"Created: {ticket['created_at']}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            )
+        except Exception as e:
+            return f"Error creating ticket: {str(e)}"
+
+    return create_ticket_tool_func
 
 
-def get_all_tickets() -> list:
-    """Return all tickets, newest first."""
+def get_all_tickets(user_id: str) -> list:
+    """Return tickets for this user, newest first."""
     conn = _get_connection()
     try:
-        cur = conn.execute("SELECT * FROM tickets ORDER BY created_at DESC")
+        cur = conn.execute(
+            "SELECT * FROM tickets WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,),
+        )
         return [dict(row) for row in cur.fetchall()]
     finally:
         conn.close()
 
 
-def get_ticket_by_id(ticket_id: str) -> dict | None:
-    """Return one ticket by id or None."""
+def get_ticket_by_id(ticket_id: str, user_id: str | None = None) -> dict | None:
+    """Return one ticket by id or None. If user_id is set, require ownership."""
     conn = _get_connection()
     try:
-        cur = conn.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,))
+        if user_id is not None:
+            cur = conn.execute(
+                "SELECT * FROM tickets WHERE id = ? AND user_id = ?",
+                (ticket_id, user_id),
+            )
+        else:
+            cur = conn.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,))
         row = cur.fetchone()
         return dict(row) if row else None
     finally:
@@ -154,6 +181,7 @@ def get_ticket_by_id(ticket_id: str) -> dict | None:
 
 def update_ticket_in_db(
     ticket_id: str,
+    user_id: str,
     customer_name: str | None = None,
     issue_summary: str | None = None,
     category: str | None = None,
@@ -161,8 +189,8 @@ def update_ticket_in_db(
     suggested_solution: str | None = None,
     status: str | None = None,
 ) -> dict | None:
-    """Update allowed fields; returns updated row or None if missing."""
-    existing = get_ticket_by_id(ticket_id)
+    """Update allowed fields; returns updated row or None if missing or wrong user."""
+    existing = get_ticket_by_id(ticket_id, user_id)
     if not existing:
         return None
     now = datetime.now(timezone.utc).isoformat()
@@ -184,35 +212,40 @@ def update_ticket_in_db(
     fields.append("updated_at = ?")
     values.append(now)
     values.append(ticket_id)
+    values.append(user_id)
     conn = _get_connection()
     try:
         conn.execute(
-            f"UPDATE tickets SET {', '.join(fields)} WHERE id = ?",
+            f"UPDATE tickets SET {', '.join(fields)} WHERE id = ? AND user_id = ?",
             values,
         )
         conn.commit()
     finally:
         conn.close()
-    return get_ticket_by_id(ticket_id)
+    return get_ticket_by_id(ticket_id, user_id)
 
 
-def close_ticket_in_db(ticket_id: str) -> dict | None:
+def close_ticket_in_db(ticket_id: str, user_id: str) -> dict | None:
     """Set status to Closed."""
-    return update_ticket_in_db(ticket_id, status="Closed")
+    return update_ticket_in_db(ticket_id, user_id, status="Closed")
 
 
-def finalize_close_ticket(ticket_id: str, resolution_note: str = "") -> dict | None:
+def finalize_close_ticket(
+    ticket_id: str, resolution_note: str = "", user_id: str | None = None
+) -> dict | None:
     """Close ticket; optional note is appended to suggested_solution."""
     tid = ticket_id.strip()
-    existing = get_ticket_by_id(tid)
+    if not user_id:
+        return None
+    existing = get_ticket_by_id(tid, user_id)
     if not existing:
         return None
     extra = existing.get("suggested_solution") or ""
     if resolution_note.strip():
         note = resolution_note.strip()
         merged = f"{extra}\n\n[Resolved] {note}".strip() if extra else f"[Resolved] {note}"
-        return update_ticket_in_db(tid, status="Closed", suggested_solution=merged)
-    return close_ticket_in_db(tid)
+        return update_ticket_in_db(tid, user_id, status="Closed", suggested_solution=merged)
+    return close_ticket_in_db(tid, user_id)
 
 
 class UpdateTicketInput(BaseModel):
@@ -224,39 +257,42 @@ class UpdateTicketInput(BaseModel):
     suggested_solution: str = Field(default="", description="New suggested solution text, or empty")
 
 
-@tool("update_ticket", args_schema=UpdateTicketInput)
-def update_ticket_tool_func(
-    ticket_id: str,
-    customer_name: str = "",
-    issue_summary: str = "",
-    category: str = "",
-    priority: str = "",
-    suggested_solution: str = "",
-) -> str:
-    """
-    Update an existing ticket after the user confirmed what to change.
-    Only pass fields that should change; use empty string to leave a field unchanged.
-    """
-    kwargs = {}
-    if customer_name.strip():
-        kwargs["customer_name"] = customer_name.strip()
-    if issue_summary.strip():
-        kwargs["issue_summary"] = issue_summary.strip()
-    if category.strip():
-        kwargs["category"] = category.strip()
-    if priority.strip():
-        kwargs["priority"] = priority.strip()
-    if suggested_solution.strip():
-        kwargs["suggested_solution"] = suggested_solution.strip()
-    if not kwargs:
-        return "No changes provided for update_ticket."
-    row = update_ticket_in_db(ticket_id.strip(), **kwargs)
-    if not row:
-        return f"Ticket {ticket_id} not found."
-    return (
-        f"✅ Ticket updated\n{row['id']}\n"
-        f"Status: {row['status']}\nSummary: {row['issue_summary'][:200]}"
-    )
+def make_update_ticket_tool(user_id: str):
+    @tool("update_ticket", args_schema=UpdateTicketInput)
+    def update_ticket_tool_func(
+        ticket_id: str,
+        customer_name: str = "",
+        issue_summary: str = "",
+        category: str = "",
+        priority: str = "",
+        suggested_solution: str = "",
+    ) -> str:
+        """
+        Update an existing ticket after the user confirmed what to change.
+        Only pass fields that should change; use empty string to leave a field unchanged.
+        """
+        kwargs = {}
+        if customer_name.strip():
+            kwargs["customer_name"] = customer_name.strip()
+        if issue_summary.strip():
+            kwargs["issue_summary"] = issue_summary.strip()
+        if category.strip():
+            kwargs["category"] = category.strip()
+        if priority.strip():
+            kwargs["priority"] = priority.strip()
+        if suggested_solution.strip():
+            kwargs["suggested_solution"] = suggested_solution.strip()
+        if not kwargs:
+            return "No changes provided for update_ticket."
+        row = update_ticket_in_db(ticket_id.strip(), user_id, **kwargs)
+        if not row:
+            return f"Ticket {ticket_id} not found."
+        return (
+            f"✅ Ticket updated\n{row['id']}\n"
+            f"Status: {row['status']}\nSummary: {row['issue_summary'][:200]}"
+        )
+
+    return update_ticket_tool_func
 
 
 class CloseTicketInput(BaseModel):
@@ -267,30 +303,20 @@ class CloseTicketInput(BaseModel):
     )
 
 
-@tool("close_ticket", args_schema=CloseTicketInput)
-def close_ticket_tool_func(ticket_id: str, resolution_note: str = "") -> str:
-    """
-    Mark a ticket Closed after the user confirmed the issue is resolved.
-    Optional resolution_note can summarize the fix.
-    """
-    tid = ticket_id.strip()
-    row = finalize_close_ticket(tid, resolution_note)
-    if not row:
-        return f"Ticket {tid} not found."
-    return (
-        f"✅ Ticket {tid} closed.\n"
-        f"Status: {row['status']}\nUpdated: {row['updated_at']}"
-    )
+def make_close_ticket_tool(user_id: str):
+    @tool("close_ticket", args_schema=CloseTicketInput)
+    def close_ticket_tool_func(ticket_id: str, resolution_note: str = "") -> str:
+        """
+        Mark a ticket Closed after the user confirmed the issue is resolved.
+        Optional resolution_note can summarize the fix.
+        """
+        tid = ticket_id.strip()
+        row = finalize_close_ticket(tid, resolution_note, user_id=user_id)
+        if not row:
+            return f"Ticket {tid} not found."
+        return (
+            f"✅ Ticket {tid} closed.\n"
+            f"Status: {row['status']}\nUpdated: {row['updated_at']}"
+        )
 
-
-def get_ticket_tool():
-    """LangChain tool for ticket creation."""
-    return create_ticket_tool_func
-
-
-def get_update_ticket_tool():
-    return update_ticket_tool_func
-
-
-def get_close_ticket_tool():
     return close_ticket_tool_func

@@ -55,12 +55,13 @@ IntelliDigest/
 │   └── engine.py                   # Chroma: intellidigest (main) + intellidigest_support
 ├── personas/
 │   └── personas.py                 # 5 persona definitions
-├── n8n/                            # Sample Telegram workflow JSON + README
+├── docker-compose.yml              # App only (default; production-friendly)
+├── docker-compose.with-n8n.yml     # Optional: app + bundled n8n
+├── docs/                           # Guides: ARCHITECTURE, Dockerless, running, production, n8n
+├── n8n/                            # Sample Telegram workflow JSON (+ pointer to docs)
 ├── data/                           # tickets.db (gitignored) created at runtime
 ├── .env.example                    # API keys + Ollama + optional support/n8n
 ├── requirements.txt                # Python dependencies (incl. langchain-ollama)
-├── DOCKERLESS.md                   # Run without Docker
-├── RUNNING_GUIDE.md                # Deeper architecture + n8n
 └── README.md
 ```
 
@@ -84,6 +85,7 @@ graph TD
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/` | Serve the frontend |
+| `GET` | `/health` | Liveness probe (`status: ok`) |
 | `GET` | `/api/personas` | List available personas |
 | `GET` | `/api/stats` | Knowledge base statistics |
 | `POST` | `/api/chat` | Send a message to the research flow |
@@ -113,7 +115,7 @@ graph TD
 | `AgentExecutor` + `create_tool_calling_agent` | Support tab only (tools: support KB search, classify, `create_ticket`, UI affordances) |
 | `ChatPromptTemplate` | Prompt engineering with persona injection |
 | `HuggingFaceEmbeddings` | Local sentence-transformer embeddings |
-| `Chroma` | Two collections: `intellidigest` (main), `intellidigest_support` (support docs only) |
+| `Chroma` | Per-user main collections (`intellidigest_u_*`); shared `intellidigest_support` (curated support docs) |
 | `StrOutputParser` | LCEL chain output parsing |
 | LCEL Chains | `prompt \| llm \| parser` composition |
 | Stuff / Map-Reduce | Brief and detailed summarization |
@@ -121,26 +123,30 @@ graph TD
 
 ## Quick Start
 
-**Run without Docker** (no n8n container needed): see **[DOCKERLESS.md](./DOCKERLESS.md)**.
+**Run without Docker** (no containers): see **[docs/DOCKERLESS.md](./docs/DOCKERLESS.md)**.
 
-The fastest way to run IntelliDigest together with the bundled **n8n** service is **Docker Compose**:
+**Docker (default — app only):** suitable for production (e.g. Oracle Cloud). Chroma + SQLite volumes; **no** bundled n8n container.
 
-1. Clone the repository.
-2. Form your `.env` file (see `.env.example`):
+```bash
+cp .env.example .env   # add GROQ_API_KEY, JWT_SECRET (for login/register), etc.
+docker compose up -d --build
+```
 
-   ```bash
-   cp .env.example .env
-   ```
+Open `http://localhost:8000`, **register or log in** (JWT). Each account has its own document collection and support tickets; the support FAQ collection is shared.
 
-3. Run the complete stack:
+**Docker with bundled n8n** (Telegram workflows in the same stack):
 
-   ```bash
-   docker compose up -d --build
-   ```
+```bash
+docker compose -f docker-compose.with-n8n.yml up -d --build
+```
 
-4. Open the web app at `http://localhost:8000`.
+Then n8n is at `http://localhost:5678`. See [docs/n8n-telegram.md](./docs/n8n-telegram.md).
 
-**For a detailed guide on how the AI agents, vector stores, and n8n bridge work under the hood, see [RUNNING_GUIDE.md](./RUNNING_GUIDE.md).**
+**For architecture, API details, and n8n integration, see [docs/RUNNING_GUIDE.md](./docs/RUNNING_GUIDE.md).**
+
+**Production (Oracle Cloud, HTTPS, CORS, backups, health checks):** [docs/PRODUCTION.md](./docs/PRODUCTION.md).
+
+**Documentation index:** [docs/README.md](./docs/README.md). **Architecture & dataflow:** [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md). **Auth & per-user data (design notes):** [docs/AUTH_MULTIUSER_PLAN.md](./docs/AUTH_MULTIUSER_PLAN.md).
 
 ## Tech Stack
 

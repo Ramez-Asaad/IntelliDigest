@@ -26,6 +26,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Single-user id for Streamlit demo (separate Chroma collection from FastAPI users).
+STREAMLIT_USER_ID = os.getenv("STREAMLIT_USER_ID", "00000000-0000-4000-8000-000000000001")
+
 from ingestion.document_loader import load_uploaded_file, semantic_chunk, SUPPORTED_EXTENSIONS
 from ingestion.news_retriever import NewsRetriever
 from vectorstore.engine import VectorStoreEngine
@@ -440,6 +443,7 @@ def render_sidebar():
                             text = load_uploaded_file(f)
                             chunks = semantic_chunk(text, max_chunk_size=500)
                             count = st.session_state.vectorstore.add_texts(
+                                STREAMLIT_USER_ID,
                                 chunks,
                                 source=f.name,
                                 metadata_extras={"type": "document", "filename": f.name},
@@ -470,7 +474,9 @@ def render_sidebar():
                             articles = retriever.search_articles(news_topic, page_size=5)
 
                             if articles:
-                                count = st.session_state.vectorstore.add_articles(articles)
+                                count = st.session_state.vectorstore.add_articles(
+                                    STREAMLIT_USER_ID, articles
+                                )
                                 st.session_state.news_count += len(articles)
                                 st.success(f"✅ {count} articles ingested!")
 
@@ -502,7 +508,7 @@ def render_sidebar():
         # ── Knowledge Base Stats ──
         st.markdown("##### 📊 Knowledge Base")
         if st.session_state.vectorstore:
-            total = st.session_state.vectorstore.get_collection_count()
+            total = st.session_state.vectorstore.get_collection_count(STREAMLIT_USER_ID)
             st.markdown(
                 f'<div style="text-align: center; padding: 0.8rem; '
                 f'background: rgba(34,211,238,0.1); border-radius: 12px; '
@@ -517,7 +523,7 @@ def render_sidebar():
 
         if st.button("🗑️ Clear Knowledge Base", key="clear_kb"):
             if st.session_state.vectorstore:
-                st.session_state.vectorstore.clear_collection()
+                st.session_state.vectorstore.clear_collection(STREAMLIT_USER_ID)
                 st.session_state.doc_count = 0
                 st.session_state.news_count = 0
                 st.success("Knowledge base cleared.")
@@ -553,7 +559,7 @@ def render_stats():
     """Render the stats dashboard."""
     total_chunks = 0
     if st.session_state.vectorstore:
-        total_chunks = st.session_state.vectorstore.get_collection_count()
+        total_chunks = st.session_state.vectorstore.get_collection_count(STREAMLIT_USER_ID)
 
     cols = st.columns(4)
     with cols[0]:
@@ -624,6 +630,7 @@ def render_chat():
                     user_query=user_input,
                     persona_id=st.session_state.persona,
                     chat_history=chat_context,
+                    user_id=STREAMLIT_USER_ID,
                 )
 
                 # Add AI response
@@ -718,7 +725,7 @@ def render_search_tab():
         st.info("Knowledge base not initialized.")
         return
 
-    total = st.session_state.vectorstore.get_collection_count()
+    total = st.session_state.vectorstore.get_collection_count(STREAMLIT_USER_ID)
     if total == 0:
         st.info("Knowledge base is empty. Upload documents or fetch news first.")
         return
@@ -729,7 +736,9 @@ def render_search_tab():
 
     if query:
         with st.spinner("Searching..."):
-            results = st.session_state.vectorstore.search_similar(query, k=5)
+            results = st.session_state.vectorstore.search_similar(
+                STREAMLIT_USER_ID, query, k=5
+            )
 
         for i, doc in enumerate(results, 1):
             title = doc.metadata.get("title", "")

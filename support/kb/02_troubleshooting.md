@@ -24,5 +24,5 @@
 
 ## Docker vs local
 
-- See **DOCKERLESS.md** for running without Docker.
-- `docker-compose.yml` can run n8n alongside the app for Telegram workflows.
+- See **docs/DOCKERLESS.md** for running without Docker.
+- Use [`docker-compose.with-n8n.yml`](../../docker-compose.with-n8n.yml) to run n8n alongside the app for Telegram workflows; the default [`docker-compose.yml`](../../docker-compose.yml) is app-only.

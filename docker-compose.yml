@@ -1,7 +1,11 @@
+# Default: IntelliDigest only (FastAPI + Chroma + SQLite). No n8n — lighter for production (e.g. Oracle Cloud Free Tier).
+# For bundled n8n + Telegram workflows, use: docker compose -f docker-compose.with-n8n.yml up -d --build
+
 services:
-  # ── IntelliDigest (FastAPI + LangChain) ─────────────────────────
   intellidigest:
-    build: .
+    build:
+      context: .
+      pull: false
     ports:
       - "8000:8000"
     env_file:
@@ -12,26 +16,8 @@ services:
     volumes:
       - chroma_data:/app/chroma_db
       - ticket_data:/app/data
-    depends_on:
-      - n8n
-    restart: unless-stopped
-
-  # ── n8n (Self-Hosted Workflow Automation) ────────────────────────
-  n8n:
-    image: n8nio/n8n:latest
-    ports:
-      - "5678:5678"
-    environment:
-      - N8N_HOST=0.0.0.0
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=http
-      - WEBHOOK_URL=http://localhost:5678/
-      - N8N_SECURE_COOKIE=false
-    volumes:
-      - n8n_data:/home/node/.n8n
     restart: unless-stopped
 
 volumes:
   chroma_data:
   ticket_data:
-  n8n_data:

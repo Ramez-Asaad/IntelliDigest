@@ -2,6 +2,8 @@
 
 This guide runs the **FastAPI app + static frontend** directly on your machine. You do **not** need Docker or the bundled **n8n** service. Core features (upload, news, chat, search, support ticketing) work the same; anything that depends on a self-hosted n8n instance is optional and can be ignored.
 
+If you **do** use Docker, the default [`docker-compose.yml`](../docker-compose.yml) runs **IntelliDigest only** (no n8n). For app + n8n, use `docker compose -f docker-compose.with-n8n.yml up -d --build` (see [RUNNING_GUIDE.md](RUNNING_GUIDE.md)). For a public server (HTTPS, CORS, backups), see [PRODUCTION.md](PRODUCTION.md).
+
 ## Prerequisites
 
 - **Python 3.11+** (3.13 is fine; match what you use elsewhere in the course).

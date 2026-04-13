@@ -12,12 +12,129 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="static/styles.css">
+    <link rel="stylesheet" href="/static/styles.css">
 
 </head>
 
 <body>
+    <div id="authGate" class="auth-gate">
+        <div class="auth-gate-bg" aria-hidden="true">
+            <div class="auth-orb auth-orb--1"></div>
+            <div class="auth-orb auth-orb--2"></div>
+            <div class="auth-orb auth-orb--3"></div>
+        </div>
+        <div class="auth-shell">
+            <header class="auth-hero" id="authHeroBlock">
+                <div class="auth-brand">
+                    <span class="auth-brand-mark" aria-hidden="true">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path
+                                d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z" />
+                            <line x1="9" y1="21" x2="15" y2="21" />
+                            <line x1="10" y1="17" x2="10" y2="21" />
+                            <line x1="14" y1="17" x2="14" y2="21" />
+                        </svg>
+                    </span>
+                    <span class="auth-brand-name">IntelliDigest</span>
+                </div>
+                <h1 class="auth-headline" id="authHeadline">Welcome back</h1>
+                <p class="auth-tagline">Your documents, chat, and support tickets stay in your space: calm,
+                    precise, private.</p>
+            </header>
+
+            <section class="auth-card auth-glass" aria-labelledby="auth-headline">
+                <p id="authError" class="auth-error" role="alert" hidden></p>
+
+                <div id="authBlockRecovery" class="auth-block" hidden>
+                    <h2 class="auth-recovery-title" id="authRecoveryTitle">Set a new password</h2>
+                    <p class="auth-tagline" style="margin-bottom:1rem;">Choose a strong password you have not used here before.</p>
+                    <div class="auth-fields">
+                        <label class="auth-field">
+                            <span class="auth-field-label">New password</span>
+                            <input type="password" id="recoveryPassword" class="auth-input" autocomplete="new-password"
+                                minlength="8" placeholder="At least 8 characters" />
+                        </label>
+                    </div>
+                    <button type="button" class="auth-btn-primary" id="recoverySubmitBtn">
+                        <span>Save and sign in</span>
+                    </button>
+                </div>
+
+                <div id="authBlockForgot" class="auth-block" hidden>
+                    <h2 class="auth-recovery-title">Reset password</h2>
+                    <p class="auth-tagline" style="margin-bottom:1rem;">We will send a link to reset your password.</p>
+                    <div class="auth-fields">
+                        <label class="auth-field">
+                            <span class="auth-field-label">Email</span>
+                            <input type="email" id="forgotEmail" class="auth-input" autocomplete="email"
+                                placeholder="you@example.com" />
+                        </label>
+                    </div>
+                    <button type="button" class="auth-btn-primary" id="forgotSendBtn"><span>Send instructions</span></button>
+                    <p class="auth-switch" style="margin-top:0.75rem;">
+                        <button type="button" class="auth-link" id="forgotBackBtn">Back to sign in</button>
+                    </p>
+                </div>
+
+                <div id="authBlockMain">
+                <div id="authGoogleWrap" class="auth-google-wrap" hidden>
+                    <a class="auth-btn-google" id="authGoogleBtn" href="/api/auth/google">
+                        <svg class="auth-google-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+                            <path fill="#4285F4"
+                                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                            <path fill="#34A853"
+                                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                            <path fill="#FBBC05"
+                                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                            <path fill="#EA4335"
+                                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                        </svg>
+                        <span>Continue with Google</span>
+                    </a>
+                    <div class="auth-divider" role="separator">
+                        <span>or use email</span>
+                    </div>
+                </div>
+
+                <div class="auth-mode-tabs" role="tablist" aria-label="Sign in or register">
+                    <button type="button" class="auth-tab is-active" id="authTabSignIn" role="tab"
+                        aria-selected="true" data-mode="signin">Sign in</button>
+                    <button type="button" class="auth-tab" id="authTabRegister" role="tab" aria-selected="false"
+                        data-mode="register">Create account</button>
+                </div>
+
+                <div class="auth-fields">
+                    <label class="auth-field">
+                        <span class="auth-field-label">Email</span>
+                        <input type="email" id="authEmail" class="auth-input" autocomplete="username"
+                            inputmode="email" placeholder="you@example.com" />
+                    </label>
+                    <label class="auth-field">
+                        <span class="auth-field-label">Password</span>
+                        <input type="password" id="authPassword" class="auth-input"
+                            autocomplete="current-password" placeholder="At least 8 characters" minlength="8" />
+                    </label>
+                </div>
+
+                <button type="button" class="auth-btn-primary" id="authSubmitBtn">
+                    <span class="auth-btn-primary-label">Sign in</span>
+                </button>
+
+                <p class="auth-switch" id="authSwitchLine">
+                    <span id="authSwitchText">New here?</span>
+                    <button type="button" class="auth-link" id="authSwitchBtn">Create an account</button>
+                </p>
+                <p class="auth-switch" id="authForgotLine">
+                    <button type="button" class="auth-link" id="authForgotLink" hidden>Forgot password?</button>
+                </p>
+                </div>
+            </section>
+
+            <p class="auth-footnote">JWT-secured sessions · Isolated knowledge per account</p>
+        </div>
+    </div>
+
     <!-- Ambient background glow — §32: "flowing gradients, soft glows" -->
     <div class="ambient">
         <div class="ambient-orb ambient-1"></div>
@@ -45,6 +162,14 @@
                 <button class="nav-tab" data-tab="support">Support</button>
             </nav>
             <div class="topbar-right">
+                <span id="userEmailLabel" class="user-email" hidden></span>
+                <button type="button" class="topbar-action" id="logoutBtn" title="Log out" aria-label="Log out" hidden>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                        <polyline points="16 17 21 12 16 7" />
+                        <line x1="21" y1="12" x2="9" y2="12" />
+                    </svg>
+                </button>
                 <div class="topbar-stat"><span class="pulse-dot"></span><b id="topStatChunks">0</b> chunks</div>
                 <button type="button" class="topbar-action topbar-tickets" id="btnTickets" title="Tickets"
                     aria-label="View tickets">

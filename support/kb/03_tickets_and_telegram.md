@@ -14,7 +14,7 @@
 ## Telegram (n8n)
 
 - **Tools → Telegram via n8n** stores webhook URL and Telegram chat ID in the browser (localStorage) and can send test or saved messages through a user-configured n8n workflow.
-- Endpoint `POST /api/n8n/telegram` forwards payloads to the webhook; see `n8n/README.md` in the repo.
+- Endpoint `POST /api/n8n/telegram` forwards payloads to the webhook; see `docs/n8n-telegram.md` in the repo.
 
 ## Environment
 

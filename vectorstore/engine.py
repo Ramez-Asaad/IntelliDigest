@@ -2,11 +2,10 @@
 engine.py
 ---------
 ChromaDB vector store with HuggingFace sentence-transformer embeddings.
-Handles embedding storage, semantic search, and collection management.
-
-Derived from Lab 4 — extended to support multi-source documents.
+Main KB uses one Chroma collection per authenticated user; support KB stays global.
 """
 
+import hashlib
 import os
 from dotenv import load_dotenv
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -16,13 +15,20 @@ from langchain_core.documents import Document
 load_dotenv()
 
 CHROMA_PERSIST_DIR = os.path.join(os.path.dirname(__file__), "..", "chroma_db")
-COLLECTION_NAME = "intellidigest"
 SUPPORT_COLLECTION_NAME = "intellidigest_support"
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
+def _main_collection_name_for_user(user_id: str) -> str:
+    """Stable Chroma collection id from user uuid (alphanumeric suffix)."""
+    u = user_id.replace("-", "").lower()
+    if len(u) != 32 or not u.isalnum():
+        u = hashlib.sha256(user_id.encode()).hexdigest()[:32]
+    return f"intellidigest_u_{u}"
+
+
 class VectorStoreEngine:
-    """Manages vector embeddings and semantic search via ChromaDB."""
+    """Manages vector embeddings: per-user main collection + shared support collection."""
 
     def __init__(self, model_name: str = EMBEDDING_MODEL):
         self.embeddings = HuggingFaceEmbeddings(
@@ -30,27 +36,33 @@ class VectorStoreEngine:
             model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True},
         )
-        self.vectorstore = Chroma(
-            collection_name=COLLECTION_NAME,
-            embedding_function=self.embeddings,
-            persist_directory=CHROMA_PERSIST_DIR,
-        )
-        # Customer-service-only KB (not user uploads / news)
+        self._user_main_chroma: dict[str, Chroma] = {}
         self.support_vectorstore = Chroma(
             collection_name=SUPPORT_COLLECTION_NAME,
             embedding_function=self.embeddings,
             persist_directory=CHROMA_PERSIST_DIR,
         )
 
-    # ── Add content ──────────────────────────────────────────────────────
+    def _get_user_main_chroma(self, user_id: str) -> Chroma:
+        if user_id not in self._user_main_chroma:
+            name = _main_collection_name_for_user(user_id)
+            self._user_main_chroma[user_id] = Chroma(
+                collection_name=name,
+                embedding_function=self.embeddings,
+                persist_directory=CHROMA_PERSIST_DIR,
+            )
+        return self._user_main_chroma[user_id]
+
+    # ── Add content (main KB, per user) ──────────────────────────────────
 
     def add_texts(
         self,
+        user_id: str,
         chunks: list[str],
         source: str = "document",
         metadata_extras: dict | None = None,
     ) -> int:
-        """Embed text chunks and store them with metadata."""
+        vs = self._get_user_main_chroma(user_id)
         documents = []
         for i, chunk in enumerate(chunks):
             if not chunk.strip():
@@ -62,11 +74,11 @@ class VectorStoreEngine:
 
         if not documents:
             return 0
-        self.vectorstore.add_documents(documents)
+        vs.add_documents(documents)
         return len(documents)
 
-    def add_articles(self, articles: list[dict]) -> int:
-        """Embed news articles and store them."""
+    def add_articles(self, user_id: str, articles: list[dict]) -> int:
+        vs = self._get_user_main_chroma(user_id)
         documents = []
         for article in articles:
             text_parts = [
@@ -90,7 +102,7 @@ class VectorStoreEngine:
 
         if not documents:
             return 0
-        self.vectorstore.add_documents(documents)
+        vs.add_documents(documents)
         return len(documents)
 
     def add_support_texts(
@@ -115,41 +127,44 @@ class VectorStoreEngine:
 
     # ── Search ───────────────────────────────────────────────────────────
 
-    def search_similar(self, query: str, k: int = 5) -> list[Document]:
-        """Find the k most semantically similar documents."""
-        return self.vectorstore.similarity_search(query, k=k)
+    def search_similar(self, user_id: str, query: str, k: int = 5) -> list[Document]:
+        vs = self._get_user_main_chroma(user_id)
+        return vs.similarity_search(query, k=k)
 
     def search_with_scores(
-        self, query: str, k: int = 5
+        self, user_id: str, query: str, k: int = 5
     ) -> list[tuple[Document, float]]:
-        """Search with relevance scores."""
-        return self.vectorstore.similarity_search_with_score(query, k=k)
+        vs = self._get_user_main_chroma(user_id)
+        return vs.similarity_search_with_score(query, k=k)
 
     def search_support_knowledge_with_scores(
         self, query: str, k: int = 5
     ) -> list[tuple[Document, float]]:
-        """Semantic search over the support-only KB (not user uploads or news)."""
         return self.support_vectorstore.similarity_search_with_score(query, k=k)
 
     # ── Management ───────────────────────────────────────────────────────
 
-    def get_collection_count(self) -> int:
-        """Return the total number of stored embeddings."""
-        return self.vectorstore._collection.count()
+    def get_collection_count(self, user_id: str) -> int:
+        vs = self._get_user_main_chroma(user_id)
+        return vs._collection.count()
 
     def get_support_collection_count(self) -> int:
-        """Chunks in the dedicated support knowledge base."""
         return self.support_vectorstore._collection.count()
 
-    def clear_collection(self) -> None:
-        """Delete all documents from the collection."""
-        self.vectorstore.delete_collection()
-        self.vectorstore = Chroma(
-            collection_name=COLLECTION_NAME,
+    def clear_collection(self, user_id: str) -> None:
+        name = _main_collection_name_for_user(user_id)
+        if user_id in self._user_main_chroma:
+            try:
+                self._user_main_chroma[user_id].delete_collection()
+            except Exception:
+                pass
+            del self._user_main_chroma[user_id]
+        self._user_main_chroma[user_id] = Chroma(
+            collection_name=name,
             embedding_function=self.embeddings,
             persist_directory=CHROMA_PERSIST_DIR,
         )
 
-    def get_retriever(self, k: int = 5):
-        """Get a LangChain retriever for use in RAG chains."""
-        return self.vectorstore.as_retriever(search_kwargs={"k": k})
+    def get_retriever(self, user_id: str, k: int = 5):
+        vs = self._get_user_main_chroma(user_id)
+        return vs.as_retriever(search_kwargs={"k": k})

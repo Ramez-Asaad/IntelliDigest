@@ -4,12 +4,29 @@
  */
 
 const API = '';
+const TOKEN_KEY = 'intellidigest_access_token';
+const USER_EMAIL_KEY = 'intellidigest_user_email';
+
+function getToken() {
+    return sessionStorage.getItem(TOKEN_KEY);
+}
+function setAuth(token, email) {
+    sessionStorage.setItem(TOKEN_KEY, token);
+    if (email) sessionStorage.setItem(USER_EMAIL_KEY, email);
+}
+function clearAuth() {
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(USER_EMAIL_KEY);
+}
+
 const state = {
     persona: 'casual_reader', summaryMode: 'brief', selectedFiles: [], articles: [], msgs: [],
     supportSessionId: crypto.randomUUID(), supportMsgs: [], ticketCount: 0,
 };
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
+
+let _appStarted = false;
 
 const el = {
     drawer: $('#drawer'), drawerBackdrop: $('#drawerBackdrop'),
@@ -39,13 +56,276 @@ const el = {
     btnCloseTickets: $('#btnCloseTickets'),
 };
 
-document.addEventListener('DOMContentLoaded', () => {
+function showAuthGate() {
+    const g = $('#authGate');
+    if (g) g.classList.remove('auth-gate--hidden');
+}
+function hideAuthGate() {
+    const g = $('#authGate');
+    if (g) g.classList.add('auth-gate--hidden');
+}
+function updateUserChrome() {
+    const email = sessionStorage.getItem(USER_EMAIL_KEY);
+    const lbl = $('#userEmailLabel');
+    const lo = $('#logoutBtn');
+    if (lbl) {
+        lbl.textContent = email || '';
+        lbl.hidden = !email;
+    }
+    if (lo) lo.hidden = !getToken();
+}
+
+function bootApp() {
+    if (_appStarted) return;
+    _appStarted = true;
     setupDrawer(); setupNav(); setupPersona();
     setupUpload(); setupNews(); setupChat();
     setupSearch(); setupSummary(); setupN8n(); setupTelegramMessageButtons();
     setupSupport(); setupTickets();
     refreshStats(); refreshTicketCount();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initAuthFlow();
 });
+
+async function initAuthFlow() {
+    const params = new URLSearchParams(window.location.search);
+    const urlTok = params.get('token');
+    const urlEmail = params.get('email');
+    const urlAuthErr = params.get('auth_error');
+    const recoveryTok = params.get('recovery');
+
+    if (urlTok) {
+        setAuth(urlTok, urlEmail || '');
+        history.replaceState({}, document.title, window.location.pathname);
+    } else if (urlAuthErr) {
+        try {
+            sessionStorage.setItem('intellidigest_oauth_err', decodeURIComponent(urlAuthErr.replace(/\+/g, ' ')));
+        } catch (_) { /* ignore */ }
+        history.replaceState({}, document.title, window.location.pathname);
+    } else if (recoveryTok) {
+        history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    const authErr = $('#authError');
+    const showErr = (m, asInfo) => {
+        if (!authErr) return;
+        authErr.textContent = m;
+        authErr.hidden = false;
+        authErr.classList.toggle('auth-error--info', !!asInfo);
+    };
+    const hideErr = () => {
+        if (authErr) {
+            authErr.hidden = true;
+            authErr.classList.remove('auth-error--info');
+        }
+    };
+
+    const pendingOauthErr = sessionStorage.getItem('intellidigest_oauth_err');
+    if (pendingOauthErr) {
+        showErr(pendingOauthErr);
+        sessionStorage.removeItem('intellidigest_oauth_err');
+    }
+
+    $('#logoutBtn')?.addEventListener('click', () => {
+        clearAuth();
+        location.reload();
+    });
+
+    let cfg = { google_enabled: false, reset_email_configured: false };
+    try {
+        cfg = await fetch(`${API}/api/auth/config`).then(r => r.json());
+    } catch (_) { /* offline */ }
+
+    function applyAuthConfig() {
+        const wrap = $('#authGoogleWrap');
+        if (wrap && cfg.google_enabled) wrap.hidden = false;
+        const forgot = $('#authForgotLink');
+        if (forgot) forgot.hidden = !cfg.reset_email_configured;
+    }
+
+    if (recoveryTok) {
+        showAuthGate();
+        applyAuthConfig();
+        const main = $('#authBlockMain');
+        const forgot = $('#authBlockForgot');
+        const rec = $('#authBlockRecovery');
+        const hero = $('#authHeroBlock');
+        if (main) main.hidden = true;
+        if (forgot) forgot.hidden = true;
+        if (rec) rec.hidden = false;
+        if (hero) hero.hidden = true;
+        const fl = $('#authForgotLink');
+        if (fl) fl.hidden = true;
+
+        $('#recoverySubmitBtn')?.addEventListener('click', async () => {
+            const pw = ($('#recoveryPassword') || {}).value || '';
+            hideErr();
+            if (!pw || pw.length < 8) {
+                showErr('Enter a password of at least 8 characters.');
+                return;
+            }
+            try {
+                const res = await fetch(`${API}/api/auth/reset-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: recoveryTok, new_password: pw }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    const d = data.detail;
+                    showErr(typeof d === 'string' ? d : `HTTP ${res.status}`);
+                    return;
+                }
+                setAuth(data.access_token, data.user?.email);
+                hideAuthGate();
+                updateUserChrome();
+                bootApp();
+            } catch (e) {
+                showErr(e.message || 'Request failed');
+            }
+        });
+        return;
+    }
+
+    let authMode = 'signin';
+    const headline = $('#authHeadline');
+    const submitLabel = $('.auth-btn-primary-label');
+    const tabSignIn = $('#authTabSignIn');
+    const tabReg = $('#authTabRegister');
+    const switchText = $('#authSwitchText');
+    const switchBtn = $('#authSwitchBtn');
+
+    function setAuthMode(mode) {
+        authMode = mode;
+        const isIn = mode === 'signin';
+        tabSignIn?.classList.toggle('is-active', isIn);
+        tabReg?.classList.toggle('is-active', !isIn);
+        tabSignIn?.setAttribute('aria-selected', String(isIn));
+        tabReg?.setAttribute('aria-selected', String(!isIn));
+        if (headline) headline.textContent = isIn ? 'Welcome back' : 'Create your account';
+        if (submitLabel) submitLabel.textContent = isIn ? 'Sign in' : 'Create account';
+        if (switchText && switchBtn) {
+            if (isIn) {
+                switchText.textContent = 'New here?';
+                switchBtn.textContent = 'Create an account';
+            } else {
+                switchText.textContent = 'Already have an account?';
+                switchBtn.textContent = 'Sign in';
+            }
+        }
+    }
+
+    tabSignIn?.addEventListener('click', () => { hideErr(); setAuthMode('signin'); });
+    tabReg?.addEventListener('click', () => { hideErr(); setAuthMode('register'); });
+    switchBtn?.addEventListener('click', () => {
+        hideErr();
+        setAuthMode(authMode === 'signin' ? 'register' : 'signin');
+    });
+
+    applyAuthConfig();
+
+    $('#authForgotLink')?.addEventListener('click', () => {
+        hideErr();
+        const main = $('#authBlockMain');
+        const fb = $('#authBlockForgot');
+        const hero = $('#authHeroBlock');
+        if (main) main.hidden = true;
+        if (fb) fb.hidden = false;
+        if (hero) hero.hidden = true;
+        const fe = $('#forgotEmail');
+        const ae = $('#authEmail');
+        if (fe && ae) fe.value = ae.value || '';
+    });
+    $('#forgotBackBtn')?.addEventListener('click', () => {
+        hideErr();
+        const main = $('#authBlockMain');
+        const fb = $('#authBlockForgot');
+        const hero = $('#authHeroBlock');
+        if (main) main.hidden = false;
+        if (fb) fb.hidden = true;
+        if (hero) hero.hidden = false;
+    });
+    $('#forgotSendBtn')?.addEventListener('click', async () => {
+        const email = ($('#forgotEmail') || {}).value?.trim() || '';
+        hideErr();
+        if (!email) {
+            showErr('Enter your email.');
+            return;
+        }
+        try {
+            const res = await fetch(`${API}/api/auth/forgot-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showErr(data.detail || `HTTP ${res.status}`);
+                return;
+            }
+            showErr(data.message || 'Check your email for next steps.', true);
+        } catch (e) {
+            showErr(e.message || 'Request failed');
+        }
+    });
+
+    const submitAuth = async (isRegister) => {
+        const email = ($('#authEmail') || {}).value?.trim() || '';
+        const password = ($('#authPassword') || {}).value || '';
+        hideErr();
+        if (!email || !password) {
+            showErr('Enter email and password.');
+            return;
+        }
+        const path = isRegister ? '/api/auth/register' : '/api/auth/login';
+        const body = { email, password };
+        try {
+            const res = await fetch(`${API}${path}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                const d = data.detail;
+                showErr(typeof d === 'string' ? d : (Array.isArray(d) ? d.map(x => x.msg || x).join(' ') : `HTTP ${res.status}`));
+                return;
+            }
+            setAuth(data.access_token, data.user?.email);
+            hideAuthGate();
+            updateUserChrome();
+            bootApp();
+        } catch (e) {
+            showErr(e.message || 'Request failed');
+        }
+    };
+
+    $('#authSubmitBtn')?.addEventListener('click', () => submitAuth(authMode === 'register'));
+    const submitOnEnter = (e) => {
+        if (e.key === 'Enter') submitAuth(authMode === 'register');
+    };
+    $('#authEmail')?.addEventListener('keydown', submitOnEnter);
+    $('#authPassword')?.addEventListener('keydown', submitOnEnter);
+
+    if (!getToken()) {
+        showAuthGate();
+        setAuthMode('signin');
+        return;
+    }
+    try {
+        await api('/api/stats');
+    } catch {
+        clearAuth();
+        showAuthGate();
+        setAuthMode('signin');
+        return;
+    }
+    hideAuthGate();
+    updateUserChrome();
+    bootApp();
+}
 
 // ═══ DRAWER ═══
 function setupDrawer() {
@@ -808,9 +1088,16 @@ async function refreshStats() {
 // ═══ UTILS ═══
 async function api(path, o = {}) {
     const h = {}; if (!o.raw) h['Content-Type'] = 'application/json';
+    const tok = getToken();
+    if (tok && !o.skipAuth) h['Authorization'] = `Bearer ${tok}`;
     const opts = { method: o.method || 'GET', headers: { ...h, ...o.headers } };
     if (o.body) { opts.body = o.body; if (o.raw) delete opts.headers['Content-Type']; }
     const res = await fetch(`${API}${path}`, opts);
+    if (res.status === 401 && getToken()) {
+        clearAuth();
+        location.reload();
+        return {};
+    }
     if (!res.ok) { let m = `HTTP ${res.status}`; try { const d = await res.json(); m = d.detail || m; } catch { } throw new Error(m); }
     return res.json();
 }

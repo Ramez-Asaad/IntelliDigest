@@ -6,3 +6,7 @@ data/
 .venv/
 venv/
 user_data.json
+
+# Docker pip wheel cache (bind-mounted at build; can be large)
+.pip-cache/**
+!.pip-cache/.gitkeep

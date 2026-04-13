@@ -1,3 +1,6 @@
+# syntax=docker/dockerfile:1
+# Pip cache: bind-mount ./.pip-cache so wheels survive "docker builder prune" and layer rebuilds
+# (anonymous BuildKit cache mounts are easier to lose on Docker Desktop).
 FROM python:3.13-slim
 
 WORKDIR /app
@@ -7,9 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Python deps
+# Install Python deps (copy only requirements first so this layer is cached when app code changes)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=bind,source=.pip-cache,target=/root/.cache/pip \
+    pip install -r requirements.txt
 
 # Copy project
 COPY . .
