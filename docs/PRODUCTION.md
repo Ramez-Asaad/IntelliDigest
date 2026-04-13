@@ -1,10 +1,34 @@
-# Production deployment (e.g. Oracle Cloud Free Tier)
+# Production deployment (VPS, Fly.io, etc.)
 
 This document complements [README.md](../README.md), [RUNNING_GUIDE.md](RUNNING_GUIDE.md), and [DOCKERLESS.md](DOCKERLESS.md).
 
-## Host choice
+## Fly.io
 
-**Oracle Cloud “Always Free” AMD VPS** (or any VPS with persistent disk) is a good fit: you run Docker, keep volumes for Chroma and SQLite, and control firewall and TLS.
+The repo includes [`fly.toml`](../fly.toml) for [Fly.io](https://fly.io/) (Dockerfile-based deploy). Chroma and SQLite share **one** persistent volume via `INTELLIDIGEST_PERSIST_DIR` (see [`paths.py`](../paths.py)).
+
+1. Install the [Fly CLI](https://fly.io/docs/hands-on/install-flyctl/) and log in: `fly auth login`.
+2. Create an app name (must be unique): e.g. `fly apps create my-intellidigest` and set `app = "my-intellidigest"` in `fly.toml` (or run `fly launch` and merge settings).
+3. **Create a volume** in the **same region** as `primary_region` in `fly.toml` (default `iad`):
+   ```bash
+   fly volumes create intellidigest_data --region iad --size 3
+   ```
+4. **Secrets** (do not commit these; set on Fly, not only in local `.env`):
+   ```bash
+   fly secrets set GROQ_API_KEY=... JWT_SECRET=... NEWSAPI_KEY=...
+   ```
+   Add any others you use (`GOOGLE_CLIENT_ID`, `OAUTH_*`, `SMTP_*`, `ALLOWED_ORIGINS`, etc.).
+5. Deploy: `fly deploy`
+6. **Custom domain / HTTPS:** `fly certs add yourdomain.com` and follow DNS instructions. Then set production `OAUTH_*`, `PASSWORD_RESET_FRONTEND_BASE`, and `ALLOWED_ORIGINS` to `https://yourdomain.com` (via `fly secrets set` or `[env]` in `fly.toml` for non-secret values).
+
+**RAM:** `fly.toml` requests **2 GB**; embeddings are heavy—raise if the Machine OOMs (`[[vm]]` `memory`).
+
+**Single Machine + volume:** scale to one Machine in the volume’s region; Fly volumes do not span Machines.
+
+---
+
+## Host choice (VPS)
+
+**Oracle Cloud “Always Free” AMD VPS**, **Hetzner**, **DigitalOcean**, etc. are a good fit: you run Docker, keep volumes for Chroma and SQLite, and control firewall and TLS.
 
 ## Docker
 
@@ -36,14 +60,16 @@ Do **not** run `uvicorn` with `--reload` in production. The [Dockerfile](../Dock
 
 ## Persistence and backups
 
-Docker Compose maps:
+**Docker Compose** maps:
 
 | Volume | Purpose |
 |--------|---------|
 | `chroma_data` | Chroma embeddings (`chroma_db/` in container) |
-| `ticket_data` | SQLite tickets (`data/tickets.db`) |
+| `ticket_data` | SQLite (`data/` — tickets, auth DB, etc.) |
 
-**Back up** both if the knowledge base or tickets matter: copy volume data or use your cloud provider’s volume snapshots on a schedule.
+**Fly.io:** one volume at `/data` holds `chroma_db/` and `data/` when `INTELLIDIGEST_PERSIST_DIR=/data`.
+
+**Back up** persistent data if the knowledge base or tickets matter: copy volume data or use your provider’s volume snapshots on a schedule.
 
 ## Health checks
 

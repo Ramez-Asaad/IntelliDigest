@@ -1,0 +1,33 @@
+# Fly.io — https://fly.io/docs/reference/configuration/
+# 1) Rename `app` or run `fly apps create <name>` and match it here.
+# 2) Create a volume (once, same region as primary_region):
+#    fly volumes create intellidigest_data --region iad --size 3
+# 3) Set secrets: fly secrets set GROQ_API_KEY=... JWT_SECRET=... (see docs/PRODUCTION.md)
+# 4) Deploy: fly deploy
+
+app = "intellidigest"
+primary_region = "iad"
+
+[build]
+
+[env]
+  TRANSFORMERS_NO_TF = "1"
+  USE_TF = "0"
+  # One Fly volume holds both Chroma and SQLite under data/ (see paths.py).
+  INTELLIDIGEST_PERSIST_DIR = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = "2gb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[mounts]
+  source = "intellidigest_data"
+  destination = "/data"

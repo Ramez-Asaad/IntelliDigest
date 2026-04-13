@@ -1,7 +1,8 @@
 import os
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-AUTH_DB_PATH = os.path.join(_REPO_ROOT, "data", "auth.db")
+from paths import data_dir
+
+AUTH_DB_PATH = os.path.join(data_dir(), "auth.db")
 
 JWT_SECRET = os.getenv("JWT_SECRET", "").strip()
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")

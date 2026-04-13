@@ -2,8 +2,10 @@
 
 import os
 
+from paths import data_dir
+
+DATABASE_PATH = os.path.join(data_dir(), "tickets.db")
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATABASE_PATH = os.path.join(_REPO_ROOT, "data", "tickets.db")
 SUPPORT_KB_DIR = os.path.join(os.path.dirname(__file__), "kb")
 
 # IntelliDigest-specific (not generic SaaS). Used by classify_issue + ticket tool.

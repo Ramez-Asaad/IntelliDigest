@@ -14,7 +14,9 @@ from langchain_core.documents import Document
 
 load_dotenv()
 
-CHROMA_PERSIST_DIR = os.path.join(os.path.dirname(__file__), "..", "chroma_db")
+from paths import chroma_persist_dir
+
+CHROMA_PERSIST_DIR = chroma_persist_dir()
 SUPPORT_COLLECTION_NAME = "intellidigest_support"
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
