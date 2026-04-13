@@ -21,7 +21,12 @@ COPY . .
 # Prevent Keras/TF conflicts
 ENV TRANSFORMERS_NO_TF=1
 ENV USE_TF=0
+ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Fly proxy uses [http_service] internal_port — must match what we listen on (default 8000; override with PORT).
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

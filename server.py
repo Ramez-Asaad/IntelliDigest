@@ -26,6 +26,8 @@ Endpoints:
   GET  /health            — Liveness probe (load balancers / orchestrators)
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
@@ -35,7 +37,7 @@ import uuid
 import httpx
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import quote, urlencode, urlparse
 
 from starlette.middleware.sessions import SessionMiddleware
@@ -58,13 +60,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from ingestion.document_loader import load_document, semantic_chunk, SUPPORTED_EXTENSIONS
 from ingestion.news_retriever import NewsRetriever
-from vectorstore.engine import VectorStoreEngine
-from chains.summarizer import Summarizer
-from memory.conversation import ConversationMemory
 from personas.personas import PERSONAS, DEFAULT_PERSONA, get_persona_list
-from agents.research_agent import create_research_agent
-from support.agent import clear_support_agent, process_support_message
-from support.bootstrap_kb import bootstrap_support_knowledge_base
 from support.memory import clear_memory as clear_support_memory
 from support.tickets import (
     finalize_close_ticket,
@@ -88,16 +84,17 @@ logger = logging.getLogger(__name__)
 
 
 # ── Global State ─────────────────────────────────────────────────────────────
+# Heavy LangChain / Chroma / embeddings imports are deferred so uvicorn binds quickly (Fly.io health checks).
 
-vectorstore: VectorStoreEngine | None = None
-_research_memories: dict[str, ConversationMemory] = {}
-agent_fn = None
-summarizer: Summarizer | None = None
+vectorstore: Any = None
+_research_memories: dict[str, Any] = {}
+agent_fn: Any = None
+summarizer: Any = None
 user_doc_count: defaultdict[str, int] = defaultdict(int)
 user_news_count: defaultdict[str, int] = defaultdict(int)
 
 
-def get_research_memory(user_id: str) -> ConversationMemory:
+def get_research_memory(user_id: str) -> Any:
     """Per-user rolling chat memory for the research tab."""
     if user_id not in _research_memories:
         groq_key = os.getenv("GROQ_API_KEY")
@@ -105,6 +102,8 @@ def get_research_memory(user_id: str) -> ConversationMemory:
             raise HTTPException(
                 status_code=503, detail="GROQ_API_KEY not set."
             )
+        from memory.conversation import ConversationMemory
+
         _research_memories[user_id] = ConversationMemory(groq_api_key=groq_key)
     return _research_memories[user_id]
 
@@ -119,6 +118,11 @@ def _cors_allow_origins() -> list[str]:
 
 def _initialize_backend_sync() -> None:
     """Load embeddings + LangChain stack. Can take minutes on cold start (model download)."""
+    from agents.research_agent import create_research_agent
+    from chains.summarizer import Summarizer
+    from support.bootstrap_kb import bootstrap_support_knowledge_base
+    from vectorstore.engine import VectorStoreEngine
+
     global vectorstore, agent_fn, summarizer
 
     groq_key = os.getenv("GROQ_API_KEY")
@@ -750,6 +754,8 @@ async def support_chat(
     if not msg:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
     sid = (req.session_id or "").strip() or str(uuid.uuid4())
+    from support.agent import process_support_message
+
     response_text, ticket_actions = await asyncio.to_thread(
         process_support_message,
         msg,
@@ -858,6 +864,8 @@ async def support_sessions_clear(
     if not vectorstore:
         raise HTTPException(status_code=503, detail="Vector store not initialized.")
     try:
+        from support.agent import clear_support_agent
+
         sid = (req.session_id or "").strip() or "default"
         mem_key = f"{user.id}:{sid}"
         cleared_mem = clear_support_memory(mem_key)

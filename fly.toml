@@ -13,6 +13,8 @@ primary_region = "iad"
 [env]
   TRANSFORMERS_NO_TF = "1"
   USE_TF = "0"
+  HOST = "0.0.0.0"
+  PORT = "8000"
   # One Fly volume holds both Chroma and SQLite under data/ (see paths.py).
   INTELLIDIGEST_PERSIST_DIR = "/data"
 
@@ -23,12 +25,12 @@ primary_region = "iad"
   auto_start_machines = true
   min_machines_running = 0
 
-# Hit /health so probes succeed before heavy LangChain init finishes (see server.py lifespan).
+# Hit /health so probes succeed while embeddings load in a background thread (see server.py).
 [[http_service.checks]]
-  grace_period = "15s"
+  grace_period = "90s"
   interval = "30s"
   method = "GET"
-  timeout = "10s"
+  timeout = "15s"
   path = "/health"
 
 [[vm]]
