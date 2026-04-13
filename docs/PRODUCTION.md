@@ -6,6 +6,8 @@ This document complements [README.md](../README.md), [RUNNING_GUIDE.md](RUNNING_
 
 The repo includes [`fly.toml`](../fly.toml) for [Fly.io](https://fly.io/) (Dockerfile-based deploy). Chroma and SQLite share **one** persistent volume via `INTELLIDIGEST_PERSIST_DIR` (see [`paths.py`](../paths.py)).
 
+The Dockerfile runs `uvicorn` on **`0.0.0.0:8000`** (required so Fly’s proxy can reach the process). Heavy work—loading the sentence-transformer model and building Chroma—runs **after** the HTTP server starts, so `/health` returns **200** quickly while `GET /health`’s JSON field **`ready`** becomes `true` once the vector stack is up. First chat/RAG requests may return **503** until then.
+
 1. Install the [Fly CLI](https://fly.io/docs/hands-on/install-flyctl/) and log in: `fly auth login`.
 2. Create an app name (must be unique): e.g. `fly apps create my-intellidigest` and set `app = "my-intellidigest"` in `fly.toml` (or run `fly launch` and merge settings).
 3. **Create a volume** in the **same region** as `primary_region` in `fly.toml` (default `iad`):

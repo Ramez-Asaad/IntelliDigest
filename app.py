@@ -11,7 +11,7 @@ Features:
   - Semantic search across the knowledge base
   - Conversation memory with summary compression
 
-Design: Follows Ramez's DESIGN.md blueprint — deep blue + aqua palette,
+Design: Follows DESIGN.md — deep blue + aqua palette,
 soft human-centered modern minimal, premium professional polish.
 """
 

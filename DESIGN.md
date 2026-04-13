@@ -1,9 +1,9 @@
-# Ramez Personal Web App Design Blueprint
+# IntelliDigest UI design system
 
-## 1) Core Design Intent
-This blueprint defines a reusable visual and product-design identity for Ramez’s future web apps, especially AI tools, LLM chatbot products, portfolio-like dashboards, and AI productivity interfaces.
+## 1) Core design intent
+This document defines the visual and product-design identity for IntelliDigest: an AI research assistant with a custom web UI—clean, warm, intelligent, and polished rather than generic or cold.
 
-The goal is to create interfaces that feel custom, clean, warm, intelligent, and well made — never generic, childish, boring, corporate-cold, or obviously AI-generated.
+The goal is interfaces that feel custom, clean, warm, intelligent, and well made — never generic, childish, boring, corporate-cold, or obviously AI-generated.
 
 This system is mobile-first, visually polished, and adaptable to desktop.
 

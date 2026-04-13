@@ -27,6 +27,7 @@ Endpoints:
 """
 
 import asyncio
+import logging
 import os
 import sys
 import tempfile
@@ -83,6 +84,8 @@ from auth.users import (
     register_user,
 )
 
+logger = logging.getLogger(__name__)
+
 
 # ── Global State ─────────────────────────────────────────────────────────────
 
@@ -114,9 +117,8 @@ def _cors_allow_origins() -> list[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Initialize all LangChain components on startup."""
+def _initialize_backend_sync() -> None:
+    """Load embeddings + LangChain stack. Can take minutes on cold start (model download)."""
     global vectorstore, agent_fn, summarizer
 
     groq_key = os.getenv("GROQ_API_KEY")
@@ -135,6 +137,19 @@ async def lifespan(app: FastAPI):
     if ensure_google_client():
         print("[OK] Google OAuth client registered.")
 
+
+async def _run_backend_startup() -> None:
+    """Run heavy init off the event loop so uvicorn binds to 0.0.0.0 immediately (required for Fly.io)."""
+    try:
+        await asyncio.to_thread(_initialize_backend_sync)
+    except Exception:
+        logger.exception("Backend initialization failed; API will return 503 for RAG routes until fixed.")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start background init so the HTTP server accepts connections while embeddings load."""
+    asyncio.create_task(_run_backend_startup())
     yield
 
 
@@ -505,8 +520,12 @@ async def auth_google_callback(request: Request):
 
 @app.get("/health")
 async def health():
-    """Lightweight liveness check; does not verify Groq or Chroma (suitable for probes)."""
-    return {"status": "ok", "service": "intellidigest"}
+    """Lightweight liveness check; does not wait for embedding model load (suitable for Fly.io probes)."""
+    return {
+        "status": "ok",
+        "service": "intellidigest",
+        "ready": vectorstore is not None,
+    }
 
 
 @app.get("/")

@@ -1,4 +1,4 @@
-"""Login / register edge cases (see tests/AUTH_TEST_PLAN.md)."""
+"""Login / register edge cases for JWT auth routes."""
 
 from __future__ import annotations
 
