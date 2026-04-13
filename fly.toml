@@ -1,33 +1,23 @@
-# Fly.io — https://fly.io/docs/reference/configuration/
-# 1) Rename `app` or run `fly apps create <name>` and match it here.
-# 2) Create a volume (once, same region as primary_region):
-#    fly volumes create intellidigest_data --region iad --size 3
-# 3) Set secrets: fly secrets set GROQ_API_KEY=... JWT_SECRET=... (see docs/PRODUCTION.md)
-# 4) Deploy: fly deploy
+# fly.toml app configuration file generated for app-lingering-wildflower-4957 on 2026-04-13T02:07:02Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "intellidigest"
-primary_region = "iad"
+app = 'app-lingering-wildflower-4957'
+primary_region = 'iad'
 
 [build]
 
-[env]
-  TRANSFORMERS_NO_TF = "1"
-  USE_TF = "0"
-  # One Fly volume holds both Chroma and SQLite under data/ (see paths.py).
-  INTELLIDIGEST_PERSIST_DIR = "/data"
-
 [http_service]
-  internal_port = 8000
+  internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
+  processes = ['app']
 
 [[vm]]
-  memory = "2gb"
-  cpu_kind = "shared"
+  memory = '1gb'
+  cpu_kind = 'shared'
   cpus = 1
-
-[mounts]
-  source = "intellidigest_data"
-  destination = "/data"
+  memory_mb = 256
