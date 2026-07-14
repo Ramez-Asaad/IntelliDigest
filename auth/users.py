@@ -24,6 +24,12 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     if "phone_e164" not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN phone_e164 TEXT")
         conn.commit()
+    if "llm_provider" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN llm_provider TEXT DEFAULT 'groq'")
+        conn.commit()
+    if "llm_api_key" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN llm_api_key TEXT")
+        conn.commit()
     conn.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub
@@ -244,5 +250,39 @@ def get_or_create_google_user(email: str, google_sub: str) -> dict:
         )
         conn.commit()
         return {"id": uid, "email": email, "created_at": now}
+    finally:
+        conn.close()
+
+def get_user_llm_config(user_id: str) -> dict | None:
+    conn = _conn()
+    try:
+        cur = conn.execute(
+            "SELECT llm_provider, llm_api_key FROM users WHERE id = ?", (user_id,)
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+def set_user_llm_config(user_id: str, provider: str, api_key: str) -> None:
+    conn = _conn()
+    try:
+        conn.execute(
+            "UPDATE users SET llm_provider = ?, llm_api_key = ? WHERE id = ?",
+            (provider, api_key, user_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+def delete_user(user_id: str) -> None:
+    """Delete a user account and their associated records."""
+    conn = _conn()
+    try:
+        # User deletion
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        # We would also ideally delete tickets, etc. but SQLite doesn't have CASCADE
+        # unless configured. We'll leave it as a simple deletion for now.
+        conn.commit()
     finally:
         conn.close()

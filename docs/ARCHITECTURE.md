@@ -2,7 +2,7 @@
 
 This document describes how the application is structured at runtime and how data flows through ingestion, retrieval, and the two conversational surfaces (research chat vs support).
 
-For setup and deployment, see [README.md](../README.md), [RUNNING_GUIDE.md](RUNNING_GUIDE.md), and [PRODUCTION.md](PRODUCTION.md).
+For setup and local running, see [README.md](../README.md) and [RUNNING_GUIDE.md](RUNNING_GUIDE.md).
 
 ---
 

@@ -1,5 +1,6 @@
 """
-Primary ChatGroq + Ollama fallback when Groq fails (rate limits, timeouts, 5xx, etc.).
+Primary LLM Factory, supporting multi-provider BYOK (Groq, OpenAI, Gemini)
+with an Ollama fallback.
 """
 
 from __future__ import annotations
@@ -15,10 +16,12 @@ from groq import (
     RateLimitError,
 )
 from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 
 # Exceptions that trigger the local Ollama model (see .env OLLAMA_*).
-_GROQ_FALLBACK_EXCEPTIONS: tuple = (
+_FALLBACK_EXCEPTIONS: tuple = (
     RateLimitError,
     APIConnectionError,
     APITimeoutError,
@@ -28,33 +31,56 @@ _GROQ_FALLBACK_EXCEPTIONS: tuple = (
     ConnectionError,
     TimeoutError,
     OSError,
+    Exception,
 )
 
 
-def make_groq_with_ollama_fallback(
+def make_llm(
     *,
-    model_name: str,
-    temperature: float,
-    groq_api_key: str | None = None,
+    provider: str = "groq",
+    api_key: str | None = None,
+    model_name: str | None = None,
+    temperature: float = 0.3,
     model_kwargs: dict | None = None,
 ):
     """
-    Returns ChatGroq.with_fallbacks([ChatOllama]) — Runnable, works with LCEL and AgentExecutor.
-
-    Set OLLAMA_BASE_URL (default http://127.0.0.1:11434) and OLLAMA_FALLBACK_MODEL
-    (default qwen2.5:0.5b). Run `ollama serve` and `ollama pull <model>` locally.
+    Returns a Chat Model with fallbacks ([ChatOllama]).
+    Works with LCEL and AgentExecutor.
     """
-    api_key = groq_api_key or os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY is required.")
-
     mk = dict(model_kwargs or {})
-    primary = ChatGroq(
-        groq_api_key=api_key,
-        model_name=model_name,
-        temperature=temperature,
-        **mk,
-    )
+    
+    # Fallback to server demo key if user hasn't provided one
+    if not api_key or not api_key.strip():
+        api_key = os.getenv("GROQ_API_KEY")
+        provider = "groq"
+        
+    if not api_key:
+        raise ValueError("API Key is required to chat.")
+
+    provider = provider.lower().strip()
+    
+    if provider == "openai":
+        primary = ChatOpenAI(
+            api_key=api_key,
+            model=model_name or "gpt-4o",
+            temperature=temperature,
+            **mk,
+        )
+    elif provider == "gemini":
+        primary = ChatGoogleGenerativeAI(
+            google_api_key=api_key,
+            model=model_name or "gemini-1.5-flash",
+            temperature=temperature,
+            **mk,
+        )
+    else:
+        # Default to Groq
+        primary = ChatGroq(
+            groq_api_key=api_key,
+            model_name=model_name or "llama-3.3-70b-versatile",
+            temperature=temperature,
+            **mk,
+        )
 
     ollama_model = os.getenv("OLLAMA_FALLBACK_MODEL", "qwen2.5:0.5b")
     base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
@@ -67,5 +93,5 @@ def make_groq_with_ollama_fallback(
 
     return primary.with_fallbacks(
         [fallback],
-        exceptions_to_handle=_GROQ_FALLBACK_EXCEPTIONS,
+        exceptions_to_handle=_FALLBACK_EXCEPTIONS,
     )

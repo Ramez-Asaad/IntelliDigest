@@ -241,7 +241,16 @@
                 <input type="text" id="newsInput" class="field" placeholder="Topic...">
                 <button class="btn btn-primary btn-block" id="newsBtn">Fetch Articles</button>
             </section>
+            <section class="tool-section" id="telegramConnectBtnSection">
+                <button type="button" class="btn btn-primary btn-block" id="btnOpenTelegramWizard" style="margin-top: 5px; height: 45px; font-size: 1.05rem;">Connect Telegram</button>
+            </section>
+            <section class="tool-section" id="llmConfigBtnSection">
+                <button type="button" class="btn btn-secondary btn-block" id="btnOpenLlmWizard" style="margin-top: 5px; height: 45px; font-size: 1.05rem;">LLM Settings (API Keys)</button>
+            </section>
             <section class="tool-section">
+                <button type="button" class="btn btn-ghost btn-block" id="btnDeleteAccount" style="color: #ef4444; margin-top: 5px;">Delete Account</button>
+            </section>
+            <section class="tool-section" id="telegramLegacySection" style="display: none;">
                 <label class="tool-label">Telegram via n8n <span class="badge">n8n</span></label>
                 <p class="tool-hint">Save assistant replies to Telegram. Point this at a Webhook workflow that sends a
                     <strong>Telegram</strong> message (see README).</p>
@@ -569,6 +578,110 @@
         <div class="spinner"></div><span id="loadingText">Processing...</span>
     </div>
     <div class="toasts" id="toastContainer"></div>
+    <div class="wizard-overlay" id="telegramWizardOverlay">
+        <div class="wizard-modal">
+            <div id="wizardStep1" class="wizard-step active">
+                <h3>Step 1: Ensure n8n is running</h3>
+                <p>Make sure your n8n Docker container is running in the background. If you used the `docker-compose.with-n8n.yml` file, it should be up!</p>
+            </div>
+            <div id="wizardStep2" class="wizard-step">
+                <h3>Step 2: Open n8n Dashboard</h3>
+                <p>Open your browser and navigate to your n8n instance at <a href="http://localhost:5678/" target="_blank">http://localhost:5678/</a>.</p>
+            </div>
+            <div id="wizardStep3" class="wizard-step">
+                <h3>Step 3: Log In or Setup</h3>
+                <p>If it's your first time, set up an owner account. Otherwise, log in to your existing account.</p>
+            </div>
+            <div id="wizardStep4" class="wizard-step">
+                <h3>Step 4: Import the Workflow</h3>
+                <p>If you don't have the workflow yet, go to <b>Workflows &rarr; &hellip; &rarr; Import from File</b> and select the <code>n8n/intellidigest-telegram.json</code> file located in this repository's folder.</p>
+            </div>
+            <div id="wizardStep5" class="wizard-step">
+                <h3>Step 5: Fill Credentials</h3>
+                <p>Open the imported workflow, click on the Telegram node, and add your Telegram Bot Token. If you don't have a bot, talk to <a href="https://t.me/BotFather" target="_blank">@BotFather</a> to create one.</p>
+            </div>
+            <div id="wizardStep6" class="wizard-step">
+                <h3>Step 6: Activate Workflow</h3>
+                <p>In the top right corner of the n8n UI, toggle the workflow from <b>Inactive</b> to <b>Active</b>.</p>
+            </div>
+            <div id="wizardStep7" class="wizard-step">
+                <h3>Step 7: Copy Webhook URL</h3>
+                <p>Open the Webhook node, click on <b>Production URL</b>, and copy the link provided.</p>
+            </div>
+            <div id="wizardStep8" class="wizard-step">
+                <h3>Step 8: Provide Webhook URL</h3>
+                <p>Paste the Production URL here. <b>Crucially:</b> Since both apps run in Docker, replace `localhost` in the URL with `n8n`!</p>
+                <input type="url" id="wizardWebhookUrl" class="field" placeholder="http://n8n:5678/webhook/..." autocomplete="off">
+            </div>
+            <div id="wizardStep9" class="wizard-step">
+                <h3>Step 9: Get your Chat ID</h3>
+                <p>We need to know where to send messages! Message <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a> or <a href="https://t.me/RawDataBot" target="_blank">@RawDataBot</a> on Telegram and copy your numeric ID.</p>
+            </div>
+            <div id="wizardStep10" class="wizard-step">
+                <h3>Step 10: Provide Chat ID</h3>
+                <p>Paste your numeric chat ID below:</p>
+                <input type="text" id="wizardChatId" class="field" placeholder="123456789" inputmode="numeric" autocomplete="off">
+            </div>
+            <div id="wizardStep11" class="wizard-step">
+                <h3>Step 11: Test Connection</h3>
+                <p>You're all set! Click below to send a test ping to your Telegram app. This will confirm the connection works.</p>
+            </div>
+            <div id="wizardStepError" class="wizard-step">
+                <h3>Connection Failed!</h3>
+                <div id="wizardErrorBox" class="wizard-error-box">
+                    <strong>Error</strong>
+                    <span id="wizardErrorText">Connection refused.</span>
+                </div>
+                <p>This usually happens if:</p>
+                <ul>
+                    <li>The webhook URL still says <code>localhost</code> instead of <code>n8n</code>.</li>
+                    <li>The n8n workflow isn't set to <b>Active</b>.</li>
+                    <li>The chat ID is incorrect.</li>
+                </ul>
+                <p>Please go back, fix the URL, or check n8n and try again!</p>
+            </div>
+
+            <div class="wizard-actions">
+                <button class="btn btn-ghost" id="wizardBtnClose">Cancel</button>
+                <div class="wizard-dots" id="wizardDots"></div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-ghost" id="wizardBtnPrev" style="display: none;">Back</button>
+                    <button class="btn btn-primary" id="wizardBtnNext">Next</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="wizard-overlay" id="llmWizardOverlay">
+        <div class="wizard-modal" style="text-align: left;">
+            <h3 style="margin-bottom: 10px;">Setup Your API Key</h3>
+            <p style="margin-bottom: 20px; color: var(--text-secondary); line-height: 1.5;">
+                IntelliDigest uses large language models to answer your queries. Please select your preferred provider and enter your API key.
+            </p>
+            <div style="margin-bottom: 15px;">
+                <label class="tool-label" style="display: block; margin-bottom: 5px;">LLM Provider</label>
+                <select id="llmProviderSelect" class="field" style="width: 100%;">
+                    <option value="groq">Groq</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="gemini">Google Gemini</option>
+                </select>
+            </div>
+            
+            <div id="llmDisclaimer" style="margin-bottom: 15px; padding: 10px; background-color: var(--bg-card); border-radius: 6px; font-size: 0.9rem; color: var(--primary);">
+                <strong>Note:</strong> We will use the <span id="llmDisclaimerModel">llama-3.3-70b-versatile</span> model for your queries.
+            </div>
+
+            <div style="margin-bottom: 25px;">
+                <label class="tool-label" style="display: block; margin-bottom: 5px;">API Key</label>
+                <input type="password" id="llmApiKeyInput" class="field" style="width: 100%;" placeholder="Paste your API key here...">
+            </div>
+            <div class="wizard-actions" style="justify-content: flex-end;">
+                <button class="btn btn-ghost" id="llmWizardBtnClose">Cancel</button>
+                <button class="btn btn-primary" id="llmWizardBtnSave">Save Settings</button>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="/static/app.js"></script>
 </body>
 

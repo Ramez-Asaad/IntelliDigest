@@ -13,6 +13,20 @@ def sanitize_support_reply(text: str) -> str:
 
     t = text
 
+    # Remove standalone JSON tool-call objects leaked by the model, e.g.
+    # {"function": "search_support_knowledge_base", "query": "..."}
+    # or {"tool": "create_ticket", ...}
+    t = re.sub(
+        r"(?im)^\s*\{\s*\"(?:function|tool|name)\"\s*:\s*\"[^\"]+\"[^\n]*\}\s*$",
+        "",
+        t,
+    )
+    t = re.sub(
+        r"(?im)^\s*\{\s*'(?:function|tool|name)'\s*:\s*'[^']+'[^\n]*\}\s*$",
+        "",
+        t,
+    )
+
     # Full <function=name>...</function> (common Groq / fine-tune leakage pattern)
     t = re.sub(r"<function\s*=[^>]*>.*?</function>", "", t, flags=re.DOTALL | re.IGNORECASE)
 

@@ -54,6 +54,29 @@ const el = {
     btnTickets: $('#btnTickets'), ticketBadge: $('#ticketBadge'),
     ticketsOverlay: $('#ticketsOverlay'), ticketsPanel: $('#ticketsPanel'), ticketsList: $('#ticketsList'),
     btnCloseTickets: $('#btnCloseTickets'),
+    // Wizard elements
+    btnOpenTelegramWizard: $('#btnOpenTelegramWizard'),
+    telegramConnectBtnSection: $('#telegramConnectBtnSection'),
+    telegramLegacySection: $('#telegramLegacySection'),
+    telegramWizardOverlay: $('#telegramWizardOverlay'),
+    wizardWebhookUrl: $('#wizardWebhookUrl'),
+    wizardChatId: $('#wizardChatId'),
+    wizardBtnClose: $('#wizardBtnClose'),
+    wizardBtnPrev: $('#wizardBtnPrev'),
+    wizardBtnNext: $('#wizardBtnNext'),
+    wizardDots: $('#wizardDots'),
+    wizardErrorBox: $('#wizardErrorBox'),
+    wizardErrorText: $('#wizardErrorText'),
+    // LLM Wizard
+    btnOpenLlmWizard: $('#btnOpenLlmWizard'),
+    llmWizardOverlay: $('#llmWizardOverlay'),
+    llmWizardBtnClose: $('#llmWizardBtnClose'),
+    llmWizardBtnSave: $('#llmWizardBtnSave'),
+    llmProviderSelect: $('#llmProviderSelect'),
+    llmApiKeyInput: $('#llmApiKeyInput'),
+    llmDisclaimerModel: $('#llmDisclaimerModel'),
+    // Delete Account
+    btnDeleteAccount: $('#btnDeleteAccount'),
 };
 
 function showAuthGate() {
@@ -81,7 +104,7 @@ function bootApp() {
     setupDrawer(); setupNav(); setupPersona();
     setupUpload(); setupNews(); setupChat();
     setupSearch(); setupSummary(); setupN8n(); setupTelegramMessageButtons();
-    setupSupport(); setupTickets();
+    setupSupport(); setupTickets(); setupLlmConfig();
     refreshStats(); refreshTicketCount();
 }
 
@@ -327,6 +350,86 @@ async function initAuthFlow() {
     bootApp();
 }
 
+// ═══ LLM CONFIG (BYOK) ═══
+async function setupLlmConfig() {
+    el.btnOpenLlmWizard?.addEventListener('click', () => openLlmWizard());
+    el.llmWizardBtnClose?.addEventListener('click', () => closeLlmWizard());
+    el.llmWizardBtnSave?.addEventListener('click', async () => await saveLlmConfig());
+    
+    el.llmProviderSelect?.addEventListener('change', (e) => {
+        const val = e.target.value;
+        if (val === 'openai') el.llmDisclaimerModel.textContent = 'gpt-4o';
+        else if (val === 'gemini') el.llmDisclaimerModel.textContent = 'gemini-1.5-flash';
+        else el.llmDisclaimerModel.textContent = 'llama-3.3-70b-versatile';
+    });
+
+    try {
+        const config = await api('/api/user/llm-config');
+        if (config) {
+            if (config.provider) {
+                el.llmProviderSelect.value = config.provider;
+                el.llmProviderSelect.dispatchEvent(new Event('change'));
+            }
+            if (!config.has_key) {
+                // Force open wizard on first boot
+                openLlmWizard();
+            }
+        }
+    } catch (e) {
+        console.error("Failed to load LLM config:", e);
+    }
+    
+    // Delete Account Logic
+    el.btnDeleteAccount?.addEventListener('click', async () => {
+        if (!confirm('Are you absolutely sure you want to delete your account? This action cannot be undone and will delete all your documents, history, and tickets.')) {
+            return;
+        }
+        loading('Deleting account...');
+        try {
+            await api('/api/user/account', { method: 'DELETE' });
+            clearAuth();
+            location.reload();
+        } catch (e) {
+            toast('Failed to delete account: ' + e.message, 'error');
+            done();
+        }
+    });
+}
+
+function openLlmWizard() {
+    el.llmWizardOverlay?.classList.add('active');
+    el.drawer?.classList.remove('open'); 
+    el.drawerBackdrop?.classList.remove('open');
+}
+
+function closeLlmWizard() {
+    el.llmWizardOverlay?.classList.remove('active');
+}
+
+async function saveLlmConfig() {
+    const provider = el.llmProviderSelect.value;
+    const key = el.llmApiKeyInput.value.trim();
+    if (!key) {
+        toast('API Key is required.', 'error');
+        return;
+    }
+    
+    el.llmWizardBtnSave.disabled = true;
+    try {
+        await api('/api/user/llm-config', {
+            method: 'POST',
+            body: JSON.stringify({ provider: provider, api_key: key })
+        });
+        toast('LLM Config saved successfully.', 'success');
+        closeLlmWizard();
+    } catch (e) {
+        toast('Failed to save config: ' + e.message, 'error');
+    } finally {
+        el.llmWizardBtnSave.disabled = false;
+        el.llmApiKeyInput.value = ''; // Clear for security
+    }
+}
+
 // ═══ DRAWER ═══
 function setupDrawer() {
     const open = () => { el.drawer.classList.add('open'); el.drawerBackdrop.classList.add('open'); };
@@ -444,10 +547,10 @@ async function sendMessage(txt) {
     try {
         const r = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message: m, persona: state.persona }) });
         dots.remove();
-        state.msgs.push({ role: 'assistant', content: r.answer, sources: r.sources || [], tools: r.tools_used || [] });
+        state.msgs.push({ role: 'assistant', content: r.answer, sources: r.sources || [], tools: r.tools_used || [], suggestions: r.suggestions || [] });
     } catch (e) {
         dots.remove();
-        state.msgs.push({ role: 'assistant', content: `Error: ${e.message}`, sources: [], tools: [] });
+        state.msgs.push({ role: 'assistant', content: `Error: ${e.message}`, sources: [], tools: [], suggestions: [] });
     }
     renderChat(); scroll(); refreshStats();
     el.sendBtn.disabled = false; el.chatInput.disabled = false; el.chatInput.focus();
@@ -460,9 +563,16 @@ function renderChat() {
         if (m.role === 'user') return `<div class="chat-msg user"><div class="msg-bubble">${esc(m.content)}</div></div>`;
         const src = (m.sources && m.sources.length) ? `<div class="msg-sources">${m.sources.filter(x => x.source || x.title).map(x => `<span class="source-tag">${x.url ? '🔗' : '📄'} ${esc(x.title || x.source || '')}</span>`).join('')}</div>` : '';
         const tl = (m.tools && m.tools.length) ? `<div class="msg-tools">${m.tools.join(' · ')}</div>` : '';
+        const sugg = (m.suggestions && m.suggestions.length) ? `<div class="msg-suggestions chip-row" style="margin-top: 12px; justify-content: flex-start;">${m.suggestions.map(s => `<button class="chip" onclick="triggerSearchSuggestion('${esc(s).replace(/'/g, "\\'")}')">🔍 ${esc(s)}</button>`).join('')}</div>` : '';
         const err = (m.content || '').startsWith('Error:');
         const tg = !err ? `<div class="msg-actions"><button type="button" class="btn-tg" data-tg-ctx="chat" data-tg-idx="${i}">Send to Telegram</button></div>` : '';
-        return `<div class="chat-msg assistant"><div class="msg-bubble">${esc(m.content)}${src}${tl}</div>${tg}</div>`;
+        let contentHtml = '';
+        if (window.marked && !err) {
+            contentHtml = window.marked.parse(m.content);
+        } else {
+            contentHtml = esc(m.content).replace(/\n/g, '<br>');
+        }
+        return `<div class="chat-msg assistant"><div class="msg-bubble">${contentHtml}${src}${tl}${sugg}</div>${tg}</div>`;
     }).join('');
 }
 function mkWelcome() {
@@ -485,6 +595,21 @@ function addDots() {
     el.chatStream.appendChild(d); scroll(); return d;
 }
 function scroll() { requestAnimationFrame(() => { el.chatStream.scrollTop = el.chatStream.scrollHeight; }) }
+
+window.triggerSearchSuggestion = async function(topic) {
+    if (!topic) return;
+    loading(`Fetching articles for "${topic}"...`);
+    try {
+        const r = await api('/api/news/search', { method: 'POST', body: JSON.stringify({ topic: topic, max_articles: 5 }) });
+        state.articles = r.articles || [];
+        toast(`Fetched new articles for "${topic}"`, 'success');
+        refreshStats();
+    } catch (e) {
+        toast(`News fetch failed: ${e.message}`, 'error');
+    }
+    done();
+    sendMessage(topic);
+};
 
 // ═══ SUPPORT & TICKETS ═══
 let supportModalCallback = null;
@@ -726,6 +851,14 @@ async function promptCloseTicketConfirm(ticketId) {
             });
             toast('Ticket closed.', 'success');
             refreshTicketCount();
+            
+            // Remove the ticket action buttons for this ticket so it can't be closed/edited again
+            state.supportMsgs.forEach(m => {
+                if (m.ticketActions) {
+                    m.ticketActions = m.ticketActions.filter(a => a.ticket_id !== ticketId);
+                }
+            });
+            renderSupportChat();
         },
     });
 }
@@ -807,6 +940,7 @@ function renderSupportChat() {
 }
 
 function formatSupportAssistant(text) {
+    if (window.marked) return window.marked.parse(text || '');
     return esc(text || '').replace(/\n/g, '<br>');
 }
 
@@ -950,11 +1084,153 @@ function setupSummary() {
 }
 
 // ═══ n8n → Telegram ═══
+let wizardCurrentStep = 1;
+const WIZARD_TOTAL_STEPS = 12; // 1-11 are normal steps, 12 is error state
+
 function setupN8n() {
-    if (el.n8nWebhookUrl) el.n8nWebhookUrl.value = localStorage.getItem('n8n.webhook_url') || '';
-    if (el.telegramChatId) el.telegramChatId.value = localStorage.getItem('telegram.chat_id') || '';
+    const savedUrl = localStorage.getItem('n8n.webhook_url') || '';
+    const savedId = localStorage.getItem('telegram.chat_id') || '';
+
+    if (el.n8nWebhookUrl) el.n8nWebhookUrl.value = savedUrl;
+    if (el.telegramChatId) el.telegramChatId.value = savedId;
+    if (el.wizardWebhookUrl) el.wizardWebhookUrl.value = savedUrl;
+    if (el.wizardChatId) el.wizardChatId.value = savedId;
+
+    if (savedUrl && savedId) {
+        if (el.telegramConnectBtnSection) el.telegramConnectBtnSection.style.display = 'none';
+        if (el.telegramLegacySection) el.telegramLegacySection.style.display = 'block';
+    } else {
+        if (el.telegramConnectBtnSection) el.telegramConnectBtnSection.style.display = 'block';
+        if (el.telegramLegacySection) el.telegramLegacySection.style.display = 'none';
+    }
+
+    if (el.btnOpenTelegramWizard) el.btnOpenTelegramWizard.addEventListener('click', openWizard);
+    if (el.wizardBtnClose) el.wizardBtnClose.addEventListener('click', closeWizard);
+    if (el.wizardBtnNext) el.wizardBtnNext.addEventListener('click', wizardNext);
+    if (el.wizardBtnPrev) el.wizardBtnPrev.addEventListener('click', wizardPrev);
+
     if (el.telegramVerifyBtn) el.telegramVerifyBtn.addEventListener('click', sendTelegramVerify);
     checkN8nStatus();
+}
+
+function renderWizardStep() {
+    if (wizardCurrentStep === WIZARD_TOTAL_STEPS) {
+        // Error step
+        el.wizardBtnNext.textContent = 'Retry';
+        el.wizardBtnPrev.style.display = 'block';
+    } else if (wizardCurrentStep === 11) {
+        el.wizardBtnNext.textContent = 'Test Connection';
+        el.wizardBtnPrev.style.display = 'block';
+    } else if (wizardCurrentStep === 1) {
+        el.wizardBtnNext.textContent = 'Next';
+        el.wizardBtnPrev.style.display = 'none';
+    } else {
+        el.wizardBtnNext.textContent = 'Next';
+        el.wizardBtnPrev.style.display = 'block';
+    }
+
+    for (let i = 1; i <= WIZARD_TOTAL_STEPS; i++) {
+        const stepEl = $(`#wizardStep${i === WIZARD_TOTAL_STEPS ? 'Error' : i}`);
+        if (stepEl) {
+            if (i === wizardCurrentStep) {
+                stepEl.classList.add('active');
+            } else {
+                stepEl.classList.remove('active');
+            }
+        }
+    }
+
+    if (el.wizardDots) {
+        let dotsHtml = '';
+        for (let i = 1; i <= 11; i++) {
+            dotsHtml += `<div class="wizard-dot ${i === (wizardCurrentStep === WIZARD_TOTAL_STEPS ? 11 : wizardCurrentStep) ? 'active' : ''}"></div>`;
+        }
+        el.wizardDots.innerHTML = dotsHtml;
+    }
+}
+
+function openWizard() {
+    wizardCurrentStep = 1;
+    renderWizardStep();
+    if (el.telegramWizardOverlay) {
+        el.telegramWizardOverlay.classList.add('active');
+    }
+}
+
+function closeWizard() {
+    if (el.telegramWizardOverlay) {
+        el.telegramWizardOverlay.classList.remove('active');
+    }
+}
+
+async function wizardNext() {
+    if (wizardCurrentStep === 8 && el.wizardWebhookUrl) {
+        localStorage.setItem('n8n.webhook_url', el.wizardWebhookUrl.value.trim());
+        if (el.n8nWebhookUrl) el.n8nWebhookUrl.value = el.wizardWebhookUrl.value.trim();
+    }
+    if (wizardCurrentStep === 10 && el.wizardChatId) {
+        localStorage.setItem('telegram.chat_id', el.wizardChatId.value.trim());
+        if (el.telegramChatId) el.telegramChatId.value = el.wizardChatId.value.trim();
+    }
+
+    if (wizardCurrentStep === 11 || wizardCurrentStep === WIZARD_TOTAL_STEPS) {
+        // Test connection
+        el.wizardBtnNext.disabled = true;
+        el.wizardBtnNext.textContent = 'Testing...';
+        const url = el.wizardWebhookUrl ? el.wizardWebhookUrl.value.trim() : '';
+        const chatId = el.wizardChatId ? el.wizardChatId.value.trim() : '';
+
+        if (!url || !chatId) {
+            el.wizardBtnNext.disabled = false;
+            el.wizardBtnNext.textContent = 'Test Connection';
+            wizardCurrentStep = WIZARD_TOTAL_STEPS;
+            if (el.wizardErrorText) el.wizardErrorText.textContent = 'Webhook URL or Chat ID is missing!';
+            renderWizardStep();
+            return;
+        }
+
+        try {
+            const r = await api('/api/n8n/telegram', {
+                method: 'POST',
+                body: JSON.stringify({
+                    webhook_url: url,
+                    telegram_chat_id: chatId,
+                    action: 'verify_telegram',
+                    assistant_message: '', user_message: '', persona: '', channel: 'research_chat'
+                })
+            });
+            el.wizardBtnNext.disabled = false;
+            if (r.status === 'forwarded') {
+                toast('Success! Telegram linked.', 'success');
+                closeWizard();
+                if (el.telegramConnectBtnSection) el.telegramConnectBtnSection.style.display = 'none';
+                if (el.telegramLegacySection) el.telegramLegacySection.style.display = 'block';
+                checkN8nStatus();
+            } else {
+                wizardCurrentStep = WIZARD_TOTAL_STEPS;
+                if (el.wizardErrorText) el.wizardErrorText.textContent = 'Unknown response from server.';
+                renderWizardStep();
+            }
+        } catch (e) {
+            el.wizardBtnNext.disabled = false;
+            wizardCurrentStep = WIZARD_TOTAL_STEPS;
+            if (el.wizardErrorText) el.wizardErrorText.textContent = e.message || 'Connection failed.';
+            renderWizardStep();
+        }
+        return;
+    }
+
+    wizardCurrentStep++;
+    renderWizardStep();
+}
+
+function wizardPrev() {
+    if (wizardCurrentStep === WIZARD_TOTAL_STEPS) {
+        wizardCurrentStep = 11;
+    } else if (wizardCurrentStep > 1) {
+        wizardCurrentStep--;
+    }
+    renderWizardStep();
 }
 
 function setupTelegramMessageButtons() {
@@ -987,26 +1263,24 @@ async function checkN8nStatus() {
 
 async function sendTelegramVerify() {
     const webhook_url = el.n8nWebhookUrl ? el.n8nWebhookUrl.value.trim() : '';
-    const telegram_chat_id = el.telegramChatId ? el.telegramChatId.value.trim() : '';
+    const chatId = el.telegramChatId ? el.telegramChatId.value.trim() : '';
+
     if (!webhook_url) { toast('Enter your n8n webhook URL.', 'info'); return; }
-    if (!telegram_chat_id) { toast('Enter your Telegram chat ID.', 'info'); return; }
-    persistTelegramSettings();
+    if (!chatId) { toast('Enter your Telegram Chat ID.', 'info'); return; }
+
     loading('Calling n8n…');
     try {
         await api('/api/n8n/telegram', {
             method: 'POST',
             body: JSON.stringify({
                 webhook_url,
-                telegram_chat_id,
+                telegram_chat_id: chatId,
                 action: 'verify_telegram',
-                assistant_message: 'IntelliDigest: your Telegram link works. Saved replies will arrive here.',
-                channel: 'research_chat',
-            }),
+                assistant_message: '', user_message: '', persona: '', channel: 'research_chat'
+            })
         });
-        toast('Check Telegram for the test message.', 'success');
-    } catch (e) {
-        toast(e.message, 'error');
-    }
+        toast('Verification ping sent. Check Telegram!', 'success');
+    } catch (e) { toast(e.message, 'error'); }
     done();
 }
 

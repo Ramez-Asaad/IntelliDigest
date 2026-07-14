@@ -81,8 +81,23 @@ class VectorStoreEngine:
 
     def add_articles(self, user_id: str, articles: list[dict]) -> int:
         vs = self._get_user_main_chroma(user_id)
+        
+        existing_urls = set()
+        try:
+            collection_data = vs.get()
+            if collection_data and "metadatas" in collection_data and collection_data["metadatas"]:
+                for meta in collection_data["metadatas"]:
+                    if meta and "url" in meta and meta["url"]:
+                        existing_urls.add(meta["url"])
+        except Exception:
+            pass
+
         documents = []
         for article in articles:
+            url = article.get("url", "")
+            if not url or url in existing_urls:
+                continue
+
             text_parts = [
                 article.get("title", ""),
                 article.get("description", ""),
@@ -96,7 +111,7 @@ class VectorStoreEngine:
                 "title": article.get("title", ""),
                 "source": article.get("source", ""),
                 "author": article.get("author", ""),
-                "url": article.get("url", ""),
+                "url": url,
                 "published_at": article.get("published_at", ""),
                 "type": "news_article",
             }

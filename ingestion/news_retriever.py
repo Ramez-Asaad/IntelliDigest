@@ -8,6 +8,7 @@ Derived from Lab 4 — adapted for the unified IntelliDigest pipeline.
 """
 
 import os
+import re
 import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -64,7 +65,22 @@ class NewsRetriever:
                 f"NewsAPI error: {data.get('message', 'Unknown error')}"
             )
 
-        return self._parse_articles(data.get("articles", []))
+        parsed_articles = self._parse_articles(data.get("articles", []))
+        
+        # Keyword filtering: ensure at least one word from the query appears in the article
+        query_words = [w.lower() for w in query.split() if w.strip()]
+        filtered_articles = []
+        
+        for article in parsed_articles:
+            search_text = (
+                f"{article.get('title', '')} {article.get('description', '')} {article.get('content', '')}"
+            ).lower()
+            
+            # Exact keyword match using regex word boundaries
+            if any(re.search(r'\b' + re.escape(word) + r'\b', search_text) for word in query_words):
+                filtered_articles.append(article)
+                
+        return filtered_articles
 
     @staticmethod
     def _parse_articles(raw_articles: list[dict]) -> list[dict]:

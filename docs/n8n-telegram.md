@@ -28,13 +28,15 @@ You can also host n8n elsewhere and paste its webhook URL into IntelliDigest **T
    `https://<your-n8n-host>/webhook/intellidigest-telegram`  
    For local Docker, n8n often shows `http://localhost:5678/webhook/intellidigest-telegram` (only reachable from the same machine unless you expose the port).
 
-## IntelliDigest UI
+## IntelliDigest UI Setup Wizard
 
 1. Run IntelliDigest (Docker or [DOCKERLESS.md](DOCKERLESS.md)).
-2. Open **Tools** → **Telegram via n8n**.
-3. Paste the **Production Webhook URL** into **n8n Webhook URL**.
-4. Set your **Telegram chat ID** (from [@userinfobot](https://t.me/userinfobot) or [@RawDataBot](https://t.me/RawDataBot)).
-5. Use **Send test message**, then try **Send to Telegram** on an assistant reply.
+2. Open the **Tools** tab in the sidebar.
+3. Click the prominent **Connect Telegram** button.
+4. Follow the intuitive 11-step interactive wizard! It will guide you through acquiring your Chat ID, entering the webhook URL, and will automatically send a test ping to verify the connection.
+
+### Formatting
+IntelliDigest natively strips unsupported Markdown elements and converts responses to Telegram's HTML format. The `intellidigest-telegram.json` workflow is already configured to parse this HTML properly out of the box!
 
 ## Payload (reference)
 

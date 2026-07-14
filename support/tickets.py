@@ -116,10 +116,10 @@ def make_create_ticket_tool(user_id: str):
         suggested_solution: str = "",
     ) -> str:
         """
-        **This is the only way to create a real ticket id.** Persist a row in SQLite (Tickets panel).
-        After the user confirms they want a ticket filed, you **must** call this tool—do not
-        describe a fake `TKT-...` id in prose without calling it. Use after intake (name, scope,
-        evidence) unless they gave a full brief and asked to file immediately.
+        Create a NEW ticket in the database.
+        CRITICAL RULES:
+        1. NEVER call this tool without EXPLICIT user confirmation (e.g. they say "yes", "create it", "file a ticket").
+        2. NEVER call this tool if a ticket for this issue was already created in this conversation. If you need to update an existing ticket (e.g. adding the user's name), DO NOT call this tool again. Instead, use show_edit_ticket_confirmation_ui.
         """
         try:
             ticket = create_ticket_in_db(

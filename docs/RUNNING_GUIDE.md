@@ -14,7 +14,7 @@ Two compose files (repository root):
 
 | File | What it runs |
 |------|----------------|
-| [`docker-compose.yml`](../docker-compose.yml) (default) | **IntelliDigest only** — lighter, good for production (e.g. Oracle Cloud Free Tier). |
+| [`docker-compose.yml`](../docker-compose.yml) (default) | **IntelliDigest only** — lightweight local app stack. |
 | [`docker-compose.with-n8n.yml`](../docker-compose.with-n8n.yml) | App **+** bundled **n8n** on port 5678 (Telegram / webhook lab stack). |
 
 ### Prerequisites
@@ -68,7 +68,7 @@ OAUTH_FRONTEND_REDIRECT_BASE=http://127.0.0.1:8000
 
 5. Restart the API, open the app, and confirm **`GET /api/auth/config`** returns `"google_enabled": true` before testing the button.
 
-**Production:** use HTTPS origins in Google Console and set `OAUTH_*` to your public URL; keep **`ALLOWED_ORIGINS`** aligned with the SPA origin (see [PRODUCTION.md](PRODUCTION.md)).
+If you later expose the app publicly, use HTTPS callback URLs and set **`ALLOWED_ORIGINS`** to your frontend origin.
 
 **Troubleshooting Google login:** If you see `invalid_token` / *“issued in the future”*, your **PC clock is behind** Google’s servers. On Windows: **Settings → Time & language → Date & time → Sync now** (enable automatic time). The app allows **10 minutes** of skew by default (`OAUTH_JWT_LEEWAY=600`); increase only if needed after syncing time.
 
@@ -152,16 +152,14 @@ When a user asks a question via the chat interface, the request is routed to `re
 
 You can **save assistant replies to Telegram** (or run a test ping) by wiring a Webhook workflow in n8n.
 
-1. In **Tools**, set your **n8n Webhook URL** and **Telegram chat ID** (from `@userinfobot` or `@RawDataBot`). Use **Send test message** to confirm the link (`action: verify_telegram` in the JSON body).
-2. After each assistant answer in **Chat** or **Support**, click **Send to Telegram** — the app calls `POST /api/n8n/telegram`, which forwards JSON to your webhook (`action: save_message`, plus `assistant_message`, `user_message`, `channel`, `persona`).
-3. In n8n, branch on `action` and use a **Telegram** node: send `assistant_message` (and optionally prepend `user_message`) to `telegram_chat_id`.
-4. Optional: other workflows can still **push text into the KB** by posting to `POST /api/n8n/webhook` with a `content` field (same as before).
+1. In **Tools**, click the **Connect Telegram** button to launch the interactive setup wizard. It will guide you through setting your **n8n Webhook URL** and **Telegram chat ID** and test the connection.
+2. After each assistant answer in **Chat** or **Support**, click **Send to Telegram** — the app calls `POST /api/n8n/telegram`, which forwards JSON to your webhook. **Note:** The backend automatically converts Markdown syntax into Telegram's HTML parse mode before forwarding.
+3. In n8n, branch on `action` and use a **Telegram** node to send the message. Ensure your Telegram node is configured with `Parse Mode: HTML`.
+4. Optional: other workflows can still **push text into the KB** by posting to `POST /api/n8n/webhook` with a `content` field.
 
-**Ready-made workflow:** import [`n8n/intellidigest-telegram.json`](../n8n/intellidigest-telegram.json) and follow [n8n-telegram.md](n8n-telegram.md) (bot token, activate, paste webhook URL into IntelliDigest Tools).
+**Ready-made workflow:** import [`n8n/intellidigest-telegram.json`](../n8n/intellidigest-telegram.json) and follow [n8n-telegram.md](n8n-telegram.md). The included workflow is already fully configured for HTML parsing!
 
 ---
-
-For **HTTPS, CORS (`ALLOWED_ORIGINS`), backups, health checks, and Ollama strategy** on a real server, see **[PRODUCTION.md](PRODUCTION.md)**.
 
 ## Modifying the App
 

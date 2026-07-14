@@ -16,7 +16,8 @@ from langchain_core.messages import HumanMessage, AIMessage
 load_dotenv()
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from chains.llm_factory import make_groq_with_ollama_fallback
+from chains.llm_factory import make_llm
+from auth.users import get_user_llm_config
 
 
 class ConversationMemory:
@@ -24,20 +25,19 @@ class ConversationMemory:
 
     def __init__(
         self,
-        groq_api_key: str | None = None,
-        model: str = "llama-3.3-70b-versatile",
+        user_id: str | None = None,
+        model: str | None = None,
         max_history_length: int = 10,
     ):
-        api_key = groq_api_key or os.getenv("GROQ_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "Groq API key is required. Set GROQ_API_KEY in your .env file."
-            )
+        config = get_user_llm_config(user_id) if user_id else None
+        provider = config.get("llm_provider") if config else "groq"
+        api_key = config.get("llm_api_key") if config else None
 
-        self.llm = make_groq_with_ollama_fallback(
+        self.llm = make_llm(
+            provider=provider,
+            api_key=api_key,
             model_name=model,
             temperature=0.2,
-            groq_api_key=api_key,
         )
         self.max_history_length = max_history_length
         self.chat_history: list[dict] = []

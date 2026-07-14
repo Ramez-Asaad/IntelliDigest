@@ -2,7 +2,7 @@
 
 This guide runs the **FastAPI app + static frontend** directly on your machine. You do **not** need Docker or the bundled **n8n** service. Core features (upload, news, chat, search, support ticketing) work the same; anything that depends on a self-hosted n8n instance is optional and can be ignored.
 
-If you **do** use Docker, the default [`docker-compose.yml`](../docker-compose.yml) runs **IntelliDigest only** (no n8n). For app + n8n, use `docker compose -f docker-compose.with-n8n.yml up -d --build` (see [RUNNING_GUIDE.md](RUNNING_GUIDE.md)). For a public server (HTTPS, CORS, backups), see [PRODUCTION.md](PRODUCTION.md).
+If you **do** use Docker, the default [`docker-compose.yml`](../docker-compose.yml) runs **IntelliDigest only** (no n8n). For app + n8n, use `docker compose -f docker-compose.with-n8n.yml up -d --build` (see [RUNNING_GUIDE.md](RUNNING_GUIDE.md)).
 
 ## Prerequisites
 
@@ -98,7 +98,7 @@ From the **repository root** (the folder that contains `server.py`):
 uvicorn server:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-- **`--reload`** restarts on code changes (omit in production).
+- **`--reload`** restarts on code changes.
 - Use `--host 0.0.0.0` if you need access from other devices on your LAN.
 
 Open a browser at: **http://127.0.0.1:8000**

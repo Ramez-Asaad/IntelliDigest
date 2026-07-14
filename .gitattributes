@@ -1,0 +1,2 @@
+# Linux containers (Docker/Fly) require LF in shell scripts; CRLF breaks shebang (exit 127).
+*.sh text eol=lf

@@ -1,8 +1,6 @@
-# 🧠 IntelliDigest — Multi-Source AI Research Assistant
+# 🧠 IntelliDigest: Multi-Source AI Research Assistant
 
 A RAG-powered research assistant built with **LangChain**, **ChromaDB**, and **Groq (Llama 3.3)** that ingests documents, news articles, and more into a unified knowledge base, then lets you chat with it using persona-aware AI agents. Accounts are **per-user**: each signed-in user gets isolated document vectors, chat memory, and support tickets.
-
-**Live demo:** [https://intellidigest.fly.dev/](https://intellidigest.fly.dev/)
 
 ![Python](https://img.shields.io/badge/Python-3.13-blue?style=flat-square&logo=python)
 ![LangChain](https://img.shields.io/badge/LangChain-0.3+-green?style=flat-square)
@@ -23,7 +21,7 @@ A RAG-powered research assistant built with **LangChain**, **ChromaDB**, and **G
 - **Research agent** : Prompt-based grounding over the **main** Chroma collection (uploads + news)
 - **Support tab & ticketing** : LangChain `AgentExecutor` with tools; SQLite tickets; **dedicated support KB** (separate Chroma collection, curated `support/kb/*.md`) searched only by the support agent
 - **Ticket lifecycle** : REST `PATCH` / `POST …/close`; close/edit/new-chat **confirmation modals** when the support agent invokes the UI affordance tools
-- **Telegram via n8n** : Forward Chat/Support replies through a user-hosted n8n webhook (`POST /api/n8n/telegram`); optional Dockerized n8n in Compose
+- **Telegram via Flowise** : Forward Chat/Support replies through a user-hosted flowise webhook (`POST /api/flowise/telegram`); optional Dockerized flowise in Compose
 - **Groq + optional Ollama fallback** : If Groq rate-limits or errors, LLM calls can fall back to a local **Ollama** model (`OLLAMA_FALLBACK_MODEL`, default `qwen2.5:0.5b`)
 - **Custom web UI** : Hand-crafted HTML/CSS/JS frontend aligned with [DESIGN.md](./DESIGN.md)
 - **Optional Streamlit UI** : Legacy `app.py` interface for local experimentation
@@ -62,12 +60,11 @@ IntelliDigest/
 │   └── engine.py                   # Chroma: per-user main + intellidigest_support
 ├── personas/
 │   └── personas.py                 # 5 persona definitions
-├── app.py                          # Optional Streamlit UI (not used by Docker/Fly default)
-├── Dockerfile                      # Python 3.13-slim image for production
-├── fly.toml                        # Fly.io app config (volume-backed persistence)
-├── docker-compose.yml              # App only (default; production-friendly)
+├── app.py                          # Optional Streamlit UI (legacy/local experimentation)
+├── Dockerfile                      # Container image for local container runs
+├── docker-compose.yml              # App container stack
 ├── docker-compose.with-n8n.yml     # Optional: app + bundled n8n
-├── docs/                           # Guides: ARCHITECTURE, Dockerless, running, production, n8n
+├── docs/                           # Guides: architecture, local running, API usage
 ├── tests/                          # pytest (auth edge cases, etc.)
 ├── n8n/                            # Sample Telegram workflow JSON
 ├── data/                           # tickets.db (gitignored) under persist dir at runtime
@@ -163,15 +160,14 @@ Then n8n is at `http://localhost:5678`. See [docs/n8n-telegram.md](./docs/n8n-te
 
 **Day-to-day usage, env reference, and API overview:** [docs/RUNNING_GUIDE.md](./docs/RUNNING_GUIDE.md).
 
-**Production (Fly.io, HTTPS, CORS, backups, health checks):** [docs/PRODUCTION.md](./docs/PRODUCTION.md).
-
 **Documentation index:** [docs/README.md](./docs/README.md). **Architecture & dataflow:** [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 
-## Deployment
+**🚀 Free deployment:** [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) — deploy to Oracle Cloud Always Free with a custom domain and HTTPS for $0/month.
 
-- **Fly.io** — The app is deployed at [https://intellidigest.fly.dev/](https://intellidigest.fly.dev/) using [`fly.toml`](./fly.toml) and the root [`Dockerfile`](./Dockerfile). Persistent Chroma and SQLite live on a Fly volume; configure `INTELLIDIGEST_PERSIST_DIR` and secrets as described in [docs/PRODUCTION.md](./docs/PRODUCTION.md).
-- **Any Docker host** — Same image as Fly; use `docker compose` with volume mounts for data.
-- **VPS (e.g. Oracle Cloud, Hetzner)** — Typical Docker + reverse proxy + TLS setup; see [docs/PRODUCTION.md](./docs/PRODUCTION.md).
+## Local usage
+
+- **Preferred:** Run directly with Python + virtualenv using [docs/DOCKERLESS.md](./docs/DOCKERLESS.md).
+- **Alternative:** Run in containers with `docker compose` for a reproducible local stack.
 
 ## Tests
 

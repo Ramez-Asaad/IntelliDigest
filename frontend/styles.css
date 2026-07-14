@@ -2146,3 +2146,124 @@ select.auth-input {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* Telegram Wizard Styles */
+.wizard-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(15, 23, 42, .6);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--s4);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.wizard-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.wizard-modal {
+    width: min(500px, 100%);
+    max-height: 90vh;
+    overflow-y: auto;
+    background: var(--srf);
+    border: 1px solid var(--bdr-s);
+    border-radius: var(--r-l);
+    padding: var(--s6);
+    box-shadow: var(--sh3);
+    position: relative;
+}
+
+.wizard-step {
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+.wizard-step.active {
+    display: block;
+}
+
+.wizard-step h3 {
+    margin-top: 0;
+    color: var(--t1);
+    font-size: 1.25rem;
+    margin-bottom: var(--s3);
+}
+
+.wizard-step p {
+    color: var(--t2);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    margin-bottom: var(--s4);
+}
+
+.wizard-step ul {
+    color: var(--t2);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    margin-bottom: var(--s4);
+    padding-left: 20px;
+}
+
+.wizard-step a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.wizard-step a:hover {
+    text-decoration: underline;
+}
+
+.wizard-actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: var(--s5);
+    padding-top: var(--s4);
+    border-top: 1px solid var(--bdr-w);
+}
+
+.wizard-dots {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: var(--s4);
+}
+
+.wizard-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--bdr-s);
+}
+
+.wizard-dot.active {
+    background: var(--primary);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.wizard-error-box {
+    background: #fee2e2;
+    border-left: 4px solid #ef4444;
+    padding: var(--s3);
+    border-radius: var(--r-s);
+    margin-bottom: var(--s4);
+    color: #991b1b;
+    font-size: 0.9rem;
+}
+
+.wizard-error-box strong {
+    display: block;
+    margin-bottom: 4px;
+}

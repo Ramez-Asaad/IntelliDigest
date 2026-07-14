@@ -14,6 +14,8 @@ reasoning with tool use.
 """
 
 import os
+import json
+import re
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool
@@ -23,8 +25,9 @@ load_dotenv()
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from chains.llm_factory import make_groq_with_ollama_fallback
+from chains.llm_factory import make_llm
 from personas.personas import PERSONAS, DEFAULT_PERSONA
+from auth.users import get_user_llm_config
 
 
 def create_research_agent(vectorstore_engine, news_retriever=None, summarizer=None):
@@ -32,18 +35,8 @@ def create_research_agent(vectorstore_engine, news_retriever=None, summarizer=No
     Create a research agent that reasons about which tools to use.
 
     Uses a structured prompt-based approach (rather than full AgentExecutor)
-    for reliability with Groq's models.
+    for reliability.
     """
-
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY not set in environment.")
-
-    llm = make_groq_with_ollama_fallback(
-        model_name="llama-3.3-70b-versatile",
-        temperature=0.3,
-        groq_api_key=api_key,
-    )
 
     def agent_respond(
         user_query: str,
@@ -58,6 +51,16 @@ def create_research_agent(vectorstore_engine, news_retriever=None, summarizer=No
         3. If general question → direct LLM response with context
         """
         persona = PERSONAS.get(persona_id, PERSONAS[DEFAULT_PERSONA])
+
+        config = get_user_llm_config(user_id) if user_id else None
+        provider = config.get("llm_provider") if config else "groq"
+        api_key = config.get("llm_api_key") if config else None
+
+        llm = make_llm(
+            provider=provider,
+            api_key=api_key,
+            temperature=0.3,
+        )
 
         # Step 1: Retrieve relevant context from knowledge base (per-user collection)
         docs = vectorstore_engine.search_similar(user_id, user_query, k=5)
@@ -90,6 +93,13 @@ Your capabilities:
 - You provide accurate, well-sourced answers based on the available context.
 - If the context is insufficient, you say so honestly.
 - You always cite your sources.
+- You MUST write your response in rich Markdown formatting (e.g., use bold, italics, bullet points, headers, or code blocks where appropriate).
+
+IMPORTANT: First, provide your detailed response using rich Markdown formatting.
+At the very end of your response, you MUST provide 1 to 3 short search suggestions (queries the user could use to fetch more info) in exactly this format:
+<suggestions>
+["suggestion 1", "suggestion 2", "suggestion 3"]
+</suggestions>
 
 {"Knowledge Base Context:" + chr(10) + kb_context if kb_context else "The knowledge base is currently empty. Suggest the user upload documents or search for news."}
 
@@ -101,7 +111,18 @@ Your capabilities:
         ])
 
         chain = prompt | llm | StrOutputParser()
-        answer = chain.invoke({"question": user_query}).strip()
+        raw_output = chain.invoke({"question": user_query}).strip()
+
+        parsed_answer = raw_output
+        suggestions = []
+        
+        sugg_match = re.search(r'<suggestions>\s*(.*?)\s*</suggestions>', raw_output, re.DOTALL | re.IGNORECASE)
+        if sugg_match:
+            try:
+                suggestions = json.loads(sugg_match.group(1))
+            except Exception:
+                pass
+            parsed_answer = re.sub(r'<suggestions>.*?</suggestions>', '', raw_output, flags=re.DOTALL | re.IGNORECASE).strip()
 
         # Determine what tools were "used"
         tools_used = []
@@ -111,9 +132,10 @@ Your capabilities:
             tools_used.append("🧠 Direct LLM Response")
 
         return {
-            "answer": answer,
+            "answer": parsed_answer,
             "sources": sources,
             "tools_used": tools_used,
+            "suggestions": suggestions,
         }
 
     return agent_respond

@@ -14,9 +14,9 @@ Endpoints:
   DELETE /api/clear       — Clear the knowledge base
   DELETE /api/chat/clear  — Clear chat history
   GET  /api/personas      — List available personas
-  POST /api/n8n/webhook   — Receive content from n8n to ingest into the KB
-  POST /api/n8n/telegram  — Forward verify/save payloads to your n8n → Telegram workflow
-  GET  /api/n8n/status    — n8n webhook URL configured (Telegram pipeline)
+  POST /api/n8n/webhook   — Receive content from N8n to ingest into the KB
+  POST /api/n8n/telegram  — Forward verify/save payloads to your N8n → Telegram workflow
+  GET  /api/n8n/status    — N8n webhook URL configured (Telegram pipeline)
   POST /api/support/chat — Support agent (tools + tickets)
   GET  /api/tickets       — List support tickets
   GET  /api/tickets/{id}  — Get one ticket
@@ -97,14 +97,9 @@ user_news_count: defaultdict[str, int] = defaultdict(int)
 def get_research_memory(user_id: str) -> Any:
     """Per-user rolling chat memory for the research tab."""
     if user_id not in _research_memories:
-        groq_key = os.getenv("GROQ_API_KEY")
-        if not groq_key:
-            raise HTTPException(
-                status_code=503, detail="GROQ_API_KEY not set."
-            )
         from memory.conversation import ConversationMemory
 
-        _research_memories[user_id] = ConversationMemory(groq_api_key=groq_key)
+        _research_memories[user_id] = ConversationMemory(user_id=user_id)
     return _research_memories[user_id]
 
 
@@ -133,8 +128,8 @@ def _initialize_backend_sync() -> None:
         sk = bootstrap_support_knowledge_base(vectorstore)
         if sk:
             print(f"[OK] Support KB: ingested {sk} chunk(s) into intellidigest_support.")
+        print("Creating research agent...")
         agent_fn = create_research_agent(vectorstore)
-        summarizer = Summarizer(groq_api_key=groq_key)
         print("[OK] All LangChain components initialized.")
     if not (os.getenv("JWT_SECRET") or "").strip():
         print("[WARNING] JWT_SECRET not set — register/login will fail until you set it in .env")
@@ -193,6 +188,10 @@ if os.path.exists(frontend_dir):
 
 # ── Request/Response Models ──────────────────────────────────────────────────
 
+class LLMConfigRequest(BaseModel):
+    provider: str
+    api_key: str
+
 class ChatRequest(BaseModel):
     message: str
     persona: str = DEFAULT_PERSONA
@@ -202,6 +201,7 @@ class ChatResponse(BaseModel):
     answer: str
     sources: list[dict]
     tools_used: list[str]
+    suggestions: list[str] = Field(default_factory=list)
 
 
 class NewsSearchRequest(BaseModel):
@@ -231,7 +231,7 @@ class N8nWebhookPayload(BaseModel):
 
 
 class N8nTelegramRequest(BaseModel):
-    """Forward to n8n so a workflow can send Telegram messages (verify link or save a reply)."""
+    """Forward to N8n so a workflow can send Telegram messages (verify link or save a reply)."""
 
     webhook_url: str = ""
     telegram_chat_id: str
@@ -593,11 +593,41 @@ async def chat(
         answer=result["answer"],
         sources=result.get("sources", []),
         tools_used=result.get("tools_used", []),
+        suggestions=result.get("suggestions", []),
     )
 
 
-@app.post("/api/upload")
-async def upload_document(
+@app.get("/api/user/llm-config")
+async def get_llm_config(user: Annotated[CurrentUser, Depends(get_current_user)]):
+    from auth.users import get_user_llm_config
+    config = get_user_llm_config(user.id)
+    return {
+        "provider": config.get("llm_provider") if config else "groq",
+        "has_key": bool(config.get("llm_api_key") if config else False)
+    }
+
+@app.post("/api/user/llm-config")
+async def set_llm_config(
+    req: LLMConfigRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)]
+):
+    from auth.users import set_user_llm_config
+    if req.provider not in ("groq", "openai", "gemini"):
+        raise HTTPException(status_code=400, detail="Invalid provider.")
+    if not req.api_key.strip():
+        raise HTTPException(status_code=400, detail="API key is required.")
+        
+    set_user_llm_config(user.id, req.provider, req.api_key.strip())
+    return {"status": "ok"}
+
+@app.delete("/api/user/account")
+async def delete_account(user: Annotated[CurrentUser, Depends(get_current_user)]):
+    from auth.users import delete_user
+    delete_user(user.id)
+    return {"status": "ok"}
+
+@app.post("/api/chat")
+async def chat_endpoint(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     file: UploadFile = File(...),
 ):
@@ -672,17 +702,21 @@ async def search_news(
 @app.post("/api/summarize")
 async def summarize_articles(
     req: SummarizeRequest,
-    _user: Annotated[CurrentUser, Depends(get_current_user)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
-    """Summarize the latest news articles."""
-    if not summarizer:
-        raise HTTPException(status_code=503, detail="Summarizer not initialized.")
+    """Summarize the latest news."""
+    from chains.summarizer import Summarizer
+    summarizer_instance = Summarizer(user_id=user.id)
 
-    # This would typically use stored articles; for now we search the vectorstore
-    raise HTTPException(
-        status_code=400,
-        detail="Use /api/news/search to fetch articles, then /api/chat to ask about them.",
-    )
+    try:
+        results = summarizer_instance.summarize_articles(
+            req.articles,
+            mode=req.mode,
+            persona_id=req.persona_id,
+        )
+        return {"summary": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/search")
@@ -883,14 +917,14 @@ async def support_sessions_clear(
         raise HTTPException(status_code=500, detail="Failed to clear session.")
 
 
-# ── n8n Integration ──────────────────────────────────────────────────────────
+# ── N8n Integration ────────────────────────────────────────────────────────
 
 @app.post("/api/n8n/webhook")
 async def n8n_webhook(
     payload: N8nWebhookPayload,
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
-    """Receive email insight results from n8n and ingest into the authenticated user's KB."""
+    """Receive email insight results from N8n and ingest into the authenticated user's KB."""
     if not vectorstore:
         raise HTTPException(status_code=503, detail="Vector store not initialized.")
 
@@ -922,6 +956,36 @@ async def n8n_webhook(
         "total_chunks": vectorstore.get_collection_count(user.id),
     }
 
+import html
+import re
+
+def markdown_to_telegram_html(text: str) -> str:
+    """
+    Converts basic Markdown to Telegram's HTML parse mode format.
+    Strips or escapes unsupported tags to prevent Telegram API errors.
+    """
+    if not text:
+        return ""
+    
+    # Escape HTML special characters
+    text = html.escape(text, quote=False)
+    
+    # Bold: **text**
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text, flags=re.DOTALL)
+    
+    # Italic: *text*
+    text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<i>\1</i>', text, flags=re.DOTALL)
+    
+    # Code blocks: ```text```
+    text = re.sub(r'```(?:[\w]+)?\n(.*?)\n```', r'<pre>\1</pre>', text, flags=re.DOTALL)
+    
+    # Inline code: `text`
+    text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
+    
+    # Headers: # Header -> convert to bold
+    text = re.sub(r'^#+\s+(.+)$', r'<b>\1</b>', text, flags=re.MULTILINE)
+    
+    return text
 
 @app.post("/api/n8n/telegram")
 async def n8n_telegram_forward(
@@ -929,7 +993,7 @@ async def n8n_telegram_forward(
     _user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
     """
-    POST JSON to your n8n webhook. Typical workflow: Webhook → IF action → Telegram Send Message.
+    POST JSON to your N8n webhook. Typical workflow: Webhook → IF action → Telegram Send Message.
 
     Actions:
       - verify_telegram — ping the user so they know the chat id is correct
@@ -943,7 +1007,7 @@ async def n8n_telegram_forward(
     if not n8n_url:
         raise HTTPException(
             status_code=503,
-            detail="n8n webhook URL not set. Add it under Tools → Telegram, or set N8N_TELEGRAM_WEBHOOK_URL / N8N_WEBHOOK_URL.",
+            detail="N8n webhook URL not set. Add it under Tools → Telegram, or set N8N_TELEGRAM_WEBHOOK_URL / N8N_WEBHOOK_URL.",
         )
 
     chat_id = req.telegram_chat_id.strip()
@@ -954,8 +1018,8 @@ async def n8n_telegram_forward(
     payload = {
         "action": action,
         "telegram_chat_id": chat_id,
-        "assistant_message": req.assistant_message,
-        "user_message": req.user_message,
+        "assistant_message": markdown_to_telegram_html(req.assistant_message),
+        "user_message": markdown_to_telegram_html(req.user_message),
         "persona": req.persona,
         "channel": req.channel if req.channel in ("research_chat", "support_chat") else "research_chat",
         "title": "IntelliDigest",
@@ -976,14 +1040,14 @@ async def n8n_telegram_forward(
                 body = response.text
             return {"status": "forwarded", "n8n_response": body}
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="n8n webhook timed out.")
+        raise HTTPException(status_code=504, detail="N8n webhook timed out.")
     except httpx.HTTPStatusError as e:
         raise HTTPException(
             status_code=502,
-            detail=f"n8n returned {e.response.status_code}: {e.response.text[:200]}",
+            detail=f"N8n returned {e.response.status_code}: {e.response.text[:200]}",
         )
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to reach n8n: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Failed to reach N8n: {str(e)}")
 
 
 @app.get("/api/n8n/status")

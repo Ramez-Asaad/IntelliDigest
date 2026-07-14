@@ -26,7 +26,8 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Strip Windows CRLF if the file was saved on Windows (avoids: env: 'sh\r': No such file or directory)
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Fly proxy uses [http_service] internal_port — must match what we listen on (default 8000; override with PORT).
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

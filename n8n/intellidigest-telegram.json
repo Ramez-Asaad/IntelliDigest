@@ -31,7 +31,9 @@
         "operation": "sendMessage",
         "chatId": "={{ $json.telegram_chat_id }}",
         "text": "={{ $json.messageText }}",
-        "additionalFields": {}
+        "additionalFields": {
+          "parseMode": "HTML"
+        }
       },
       "id": "a1f2e3d4-0003-4000-8000-000000000003",
       "name": "Send Telegram",

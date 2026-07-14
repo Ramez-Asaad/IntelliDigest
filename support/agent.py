@@ -9,7 +9,7 @@ import os
 from langchain_classic.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-from chains.llm_factory import make_groq_with_ollama_fallback
+from chains.llm_factory import make_llm
 from support.classifier import get_classifier_tool
 from support.config import SUPPORT_LLM_MODEL, SUPPORT_LLM_TEMPERATURE
 from support.memory import get_memory
@@ -23,6 +23,7 @@ from support.ui_tools import (
     make_show_edit_ticket_ui_tool,
 )
 from vectorstore.engine import VectorStoreEngine
+from auth.users import get_user_llm_config
 
 SYSTEM_PROMPT = SUPPORT_SYSTEM_PROMPT
 
@@ -109,14 +110,14 @@ def collect_ui_actions_from_steps(intermediate_steps, user_id: str) -> list[dict
 def _create_agent(
     session_id: str, vectorstore_engine: VectorStoreEngine, user_id: str
 ) -> AgentExecutor:
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY not set in environment.")
+    config = get_user_llm_config(user_id) if user_id else None
+    provider = config.get("llm_provider") if config else "groq"
+    api_key = config.get("llm_api_key") if config else None
 
-    llm = make_groq_with_ollama_fallback(
-        model_name=SUPPORT_LLM_MODEL,
+    llm = make_llm(
+        provider=provider,
+        api_key=api_key,
         temperature=SUPPORT_LLM_TEMPERATURE,
-        groq_api_key=api_key,
         model_kwargs={"parallel_tool_calls": False},
     )
 
@@ -159,7 +160,11 @@ def _create_agent(
 def get_support_agent(
     session_id: str, vectorstore_engine: VectorStoreEngine, user_id: str
 ) -> AgentExecutor:
-    cache_key = f"{user_id}:{session_id}:{id(vectorstore_engine)}"
+    config = get_user_llm_config(user_id) if user_id else None
+    provider = config.get("llm_provider") if config else "groq"
+    api_key = config.get("llm_api_key") if config else None
+    cache_key = f"{user_id}:{session_id}:{id(vectorstore_engine)}:{provider}:{api_key}"
+    
     if cache_key not in _agent_cache:
         _agent_cache[cache_key] = _create_agent(session_id, vectorstore_engine, user_id)
     return _agent_cache[cache_key]
