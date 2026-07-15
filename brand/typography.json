@@ -1,0 +1,6 @@
+{
+  "heading": { "family": "Inter", "fallback": "Inter, -apple-system, 'Segoe UI', system-ui, sans-serif" },
+  "body": { "family": "Inter", "fallback": "Inter, -apple-system, 'Segoe UI', system-ui, sans-serif" },
+  "weights": [400, 500, 600, 700],
+  "scale": 1.2
+}

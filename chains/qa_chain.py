@@ -19,7 +19,7 @@ load_dotenv()
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from chains.llm_factory import make_groq_with_ollama_fallback
+from chains.llm_factory import make_llm
 from personas.personas import PERSONAS, DEFAULT_PERSONA
 
 
@@ -65,10 +65,10 @@ class QAChain:
                 "Groq API key is required. Set GROQ_API_KEY in your .env file."
             )
 
-        self.llm = make_groq_with_ollama_fallback(
+        self.llm = make_llm(
             model_name=model,
             temperature=0.3,
-            groq_api_key=api_key,
+            api_key=api_key,
         )
         self.retriever = retriever
         self.parser = StrOutputParser()

@@ -211,6 +211,7 @@ class NewsSearchRequest(BaseModel):
 
 
 class SummarizeRequest(BaseModel):
+    articles: list[dict] = Field(default_factory=list)
     mode: str = "brief"
     persona: str = DEFAULT_PERSONA
 
@@ -626,8 +627,8 @@ async def delete_account(user: Annotated[CurrentUser, Depends(get_current_user)]
     delete_user(user.id)
     return {"status": "ok"}
 
-@app.post("/api/chat")
-async def chat_endpoint(
+@app.post("/api/upload")
+async def upload_document(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     file: UploadFile = File(...),
 ):
@@ -712,7 +713,7 @@ async def summarize_articles(
         results = summarizer_instance.summarize_articles(
             req.articles,
             mode=req.mode,
-            persona_id=req.persona_id,
+            persona_id=req.persona,
         )
         return {"summary": results}
     except Exception as e:

@@ -1,0 +1,15 @@
+\documentclass[border=7pt]{standalone}
+\usepackage{xcolor}
+\usepackage[sfdefault]{inter}
+\input{logo_common.tex}
+\begin{document}
+\begin{tikzpicture}
+  \begin{scope}[scale=0.60]
+    \digestmark{idPrimary}{idSecondary}
+  \end{scope}
+  \node[anchor=west, inner sep=0pt] at (0.78,0.09)
+    {\fontsize{25}{25}\selectfont\bfseries\color{idPrimary}Intelli\color{idInk}Digest};
+  \node[anchor=west, inner sep=0pt] at (0.80,-0.42)
+    {\fontsize{7.4}{7.4}\selectfont\color{idGrey}MULTI\,-\,SOURCE\ \ AI\ \ RESEARCH};
+\end{tikzpicture}
+\end{document}

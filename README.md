@@ -1,4 +1,6 @@
-# 🧠 IntelliDigest: Multi-Source AI Research Assistant
+<p align="center">
+  <img src="brand/logo/logo-wordmark.png" alt="IntelliDigest — Multi-Source AI Research Assistant" width="460">
+</p>
 
 A RAG-powered research assistant built with **LangChain**, **ChromaDB**, and **Groq (Llama 3.3)** that ingests documents, news articles, and more into a unified knowledge base, then lets you chat with it using persona-aware AI agents. Accounts are **per-user**: each signed-in user gets isolated document vectors, chat memory, and support tickets.
 

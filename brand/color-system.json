@@ -1,0 +1,28 @@
+{
+  "name": "IntelliDigest",
+  "primary": "#1E3A8A",
+  "secondary": "#2563EB",
+  "accent": "#22D3EE",
+  "neutrals": ["#0F172A", "#475569", "#CEDAE6", "#FFFFFF"],
+  "roles": {
+    "background": "#F0F4F9",
+    "surface": "#FFFFFF",
+    "text": "#0F172A",
+    "accent": "#22D3EE"
+  },
+  "minContrast": 4.5,
+  "rules": {
+    "do": [
+      "Use primary (#1E3A8A) for large brand surfaces, headers, and key structure",
+      "Reserve accent cyan (#22D3EE) for a single focal action per view",
+      "Let surfaces breathe — generous whitespace over dense fills",
+      "Keep body text on #0F172A over light surfaces for full contrast"
+    ],
+    "dont": [
+      "Set text or UI copy in accent cyan — it fails the 4.5 contrast on white",
+      "Introduce a warm second accent; the system stays cool blue → cyan",
+      "Recolor or gradient the logo",
+      "Stack more than one accent element in the same region"
+    ]
+  }
+}

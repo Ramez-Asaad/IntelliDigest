@@ -12,7 +12,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Python deps (copy only requirements first so this layer is cached when app code changes)
 COPY requirements.txt .
+# Install CPU-only torch first, otherwise sentence-transformers pulls the ~2.5GB
+# CUDA build. Embeddings run on CPU here (see vectorstore/engine.py), so this is
+# strictly smaller/faster with no loss. If the CPU index ever fails to resolve a
+# dependency, switch --index-url to --extra-index-url.
 RUN --mount=type=bind,source=.pip-cache,target=/root/.cache/pip \
+    pip install torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install -r requirements.txt
 
 # Copy project

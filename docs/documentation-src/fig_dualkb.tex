@@ -1,0 +1,34 @@
+\begin{tikzpicture}[x=1cm,y=1cm]
+  % shared embeddings
+  \node[accentbox, minimum width=54mm] (emb) at (5,1.6)
+     {\code{all-MiniLM-L6-v2} embeddings\\{\scriptsize shared 384-dim encoder}};
+
+  % surfaces
+  \node[tealbox, minimum width=34mm] (res) at (1.8,-0.2) {Research flow};
+  \node[tealbox, minimum width=34mm] (sup) at (8.2,-0.2) {Support agent};
+
+  % collections
+  \node[store, minimum width=40mm] (usc) at (1.8,-2.7)
+     {Per-user main collections\\{\scriptsize \code{intellidigest\_u\_\{id\}}}};
+  % stacked hint
+  \begin{scope}[on background layer]
+    \node[store, minimum width=40mm, draw=line, fill=mist2] at (2.15,-2.35) {};
+    \node[store, minimum width=40mm, draw=line, fill=mist2] at (2.0,-2.52) {};
+  \end{scope}
+
+  \node[store, minimum width=40mm] (spc) at (8.2,-2.7)
+     {Shared support collection\\{\scriptsize \code{intellidigest\_support}}};
+
+  % edges
+  \draw[dashflow] (emb) to[out=200,in=70] (res.north);
+  \draw[dashflow] (emb) to[out=-20,in=110] (sup.north);
+  \draw[flowa] (res) -- (usc) node[tag,midway]{read / write};
+  \draw[flowa] (sup) -- (spc) node[tag,midway]{read only};
+
+  % isolation boundary
+  \draw[line, line width=1pt, densely dashed] (5,1.0) -- (5,-3.5);
+  \node[rotate=90, font=\sffamily\scriptsize\bfseries, text=rose] at (5.28,-1.2)
+     {isolation boundary};
+  \node[font=\sffamily\scriptsize, text=slate, align=center] at (5,-3.85)
+     {private uploads never reach support answers};
+\end{tikzpicture}

@@ -1,0 +1,55 @@
+\begin{tikzpicture}[x=1cm,y=1cm]
+  % ---- Clients ----
+  \node[accentbox, minimum width=30mm] (web) at (2.6,0) {Browser SPA\\{\scriptsize HTML/CSS/JS}};
+  \node[ext,       minimum width=30mm] (n8n) at (9.6,0) {n8n / Telegram\\{\scriptsize optional}};
+
+  % ---- API ----
+  \node[accentbox, minimum width=118mm, minimum height=11mm] (api) at (6.1,-2.05)
+     {\textbf{FastAPI application}\ \ ·\ \ \code{server.py}\\{\scriptsize JWT auth\ \ ·\ \ routing\ \ ·\ \ static hosting}};
+
+  % ---- Capabilities ----
+  \node[base,     minimum width=26mm] (ing) at (1.6,-4.1) {Ingestion};
+  \node[tealbox,  minimum width=26mm] (res) at (4.93,-4.1) {Research\\{\scriptsize RAG}};
+  \node[tealbox,  minimum width=26mm] (sup) at (8.27,-4.1) {Support\\{\scriptsize agent}};
+  \node[base,     minimum width=26mm] (mem) at (11.6,-4.1) {Memory \&\\{\scriptsize summaries}};
+
+  % ---- Persistence ----
+  \node[store, minimum width=26mm] (chroma) at (2.7,-6.7) {ChromaDB\\{\scriptsize 2 collections}};
+  \node[store, minimum width=26mm] (sqlite) at (5.9,-6.7) {SQLite\\{\scriptsize users · tickets}};
+
+  % ---- External ----
+  \node[ext, minimum width=24mm] (groq)  at (9.6,-6.25) {Groq LLM};
+  \node[ext, minimum width=24mm] (news)  at (12.6,-6.25) {NewsAPI};
+  \node[ext, minimum width=24mm] (ollama)at (9.6,-7.25) {Ollama\\{\scriptsize fallback}};
+  \node[ext, minimum width=24mm] (oauth) at (12.6,-7.25) {Google · SMTP};
+
+  % ---- Backdrops ----
+  \begin{scope}[on background layer]
+    \node[group, fill=accent!5, fit=(web)(n8n), inner sep=6pt] (gclients) {};
+    \node[group, fit=(api)(ing)(mem), inner sep=8pt] (gapp) {};
+    \node[group, fill=mist, fit=(chroma)(sqlite), inner xsep=7pt, inner ysep=7pt] (gstore) {};
+    \node[group, fill=mist, fit=(groq)(news)(ollama)(oauth), inner sep=7pt] (gext) {};
+  \end{scope}
+  \node[grouplabel, anchor=south west, yshift=1.5pt] at (gclients.north west) {Clients};
+  \node[grouplabel, anchor=south west, yshift=1.5pt] at (gapp.north west) {FastAPI process};
+  \node[grouplabel, anchor=south west, yshift=1.5pt] at (gstore.north west) {Local persistence};
+  \node[grouplabel, anchor=south west, yshift=1.5pt] at (gext.north west) {External services};
+
+  % ---- Edges ----
+  \draw[flowa] (web) -- (api);
+  \draw[flowa] (n8n) -- (api);
+  \draw[flow] (api) -- (ing);
+  \draw[flow] (api) -- (res);
+  \draw[flow] (api) -- (sup);
+  \draw[flow] (api) -- (mem);
+
+  \draw[flow] (ing) -- (chroma);
+  \draw[flow] (res.south) to[out=-90,in=90] (chroma.north);
+  \draw[flow] (sup.south) to[out=-90,in=100] (sqlite.north);
+
+  \draw[dashflow] (res.south) to[out=-60,in=150] (groq.north west);
+  \draw[dashflow] (sup) -- (groq.north);
+  \draw[dashflow] (mem) to[out=-90,in=60] (groq.north east);
+  \draw[dashflow] (ing.south) to[out=-80,in=160] (news.west);
+  \draw[dashflow] (groq) -- (ollama) node[tag,midway,right=1pt]{fallback};
+\end{tikzpicture}

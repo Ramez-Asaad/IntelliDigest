@@ -8,7 +8,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from chains.llm_factory import make_groq_with_ollama_fallback
+from chains.llm_factory import make_llm
 
 from support.config import ISSUE_CATEGORIES, SUPPORT_LLM_MODEL
 
@@ -21,10 +21,10 @@ def _get_classifier_llm():
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
             return None
-        _classifier_llm = make_groq_with_ollama_fallback(
+        _classifier_llm = make_llm(
             model_name=SUPPORT_LLM_MODEL,
             temperature=0.1,
-            groq_api_key=api_key,
+            api_key=api_key,
         )
     return _classifier_llm
 

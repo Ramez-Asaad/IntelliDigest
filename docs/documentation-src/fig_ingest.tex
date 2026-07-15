@@ -1,0 +1,25 @@
+\begin{tikzpicture}[x=1cm,y=1cm]
+  % sources
+  \node[base, minimum width=30mm] (up) at (0,1.2) {Upload\\{\scriptsize PDF·DOCX·XLSX·TXT}};
+  \node[base, minimum width=30mm] (nw) at (0,0)   {News search\\{\scriptsize NewsAPI}};
+  \node[base, minimum width=30mm] (wh) at (0,-1.2){n8n webhook};
+
+  % pipeline
+  \node[base,      minimum width=26mm] (load)  at (4.0,1.2) {\code{document\_loader}\\{\scriptsize parse}};
+  \node[base,      minimum width=26mm] (chunk) at (7.1,0.5) {\code{semantic\_chunk}\\{\scriptsize sentence-aware}};
+  \node[accentbox, minimum width=22mm] (embed) at (9.8,0.5) {embed\\{\scriptsize MiniLM}};
+  \node[store,     minimum width=24mm] (kb)    at (13.5,0.5) {Chroma\\{\scriptsize user KB}};
+
+  \begin{scope}[on background layer]
+    \node[group, fill=mist, fit=(load)(chunk)(embed), inner sep=9pt] (gp) {};
+  \end{scope}
+  \node[grouplabel, anchor=south west, yshift=1.5pt] at (gp.north west) {Ingestion pipeline};
+
+  % edges
+  \draw[flow] (up) -- (load);
+  \draw[flow] (load) -- (chunk);
+  \draw[flow] (wh.east) to[out=0,in=-140] (chunk.south west);
+  \draw[flow] (nw.east) to[out=0,in=-110] (embed.south);
+  \draw[flow] (chunk) -- (embed);
+  \draw[flowa] (embed) -- (kb) node[tag,midway,below=1pt]{\code{add\_texts}};
+\end{tikzpicture}

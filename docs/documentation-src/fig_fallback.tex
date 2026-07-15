@@ -1,0 +1,19 @@
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \node[base,      minimum width=32mm] (cons) at (0,0) {Research · Support\\{\scriptsize Summaries}};
+  \node[accentbox, minimum width=26mm] (fac)  at (3.6,0) {\code{make\_llm()}};
+  \node[tealbox,   minimum width=40mm] (prim) at (7.9,0.8) {Primary provider\\{\scriptsize Groq · OpenAI · Gemini}};
+  \node[amberbox,  minimum width=40mm] (olla) at (7.9,-0.9) {Ollama\\{\scriptsize local fallback}};
+  \node[base,      minimum width=22mm] (out)  at (12.3,0) {response};
+
+  \begin{scope}[on background layer]
+    \node[group, fill=mist, fit=(prim)(olla), inner sep=8pt] (gw) {};
+  \end{scope}
+  \node[grouplabel, anchor=south west] at (gw.north west) {\code{RunnableWithFallbacks}};
+
+  \draw[flowa] (cons) -- (fac);
+  \draw[flowa] (fac) to[out=30,in=180]  (prim);
+  \draw[flow]  (fac) to[out=-30,in=180] (olla);
+  \draw[flowa] (prim) to[out=0,in=120] (out);
+  \draw[dashflow]  (prim) -- (olla) node[tag,midway]{on rate-limit / error};
+  \draw[flow]  (olla) to[out=0,in=-120] (out);
+\end{tikzpicture}

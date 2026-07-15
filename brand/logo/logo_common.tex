@@ -1,0 +1,38 @@
+% ---- IntelliDigest logo mark: shared colors + drawing macro ----
+% Story: many sources (streams, left) are ingested through the knowledge-base
+% ring and distilled into one cyan spark of insight (core). The ring opens on
+% the right — refined understanding flowing back out.
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta}
+
+\definecolor{idPrimary}{HTML}{1E3A8A}
+\definecolor{idSecondary}{HTML}{2563EB}
+\definecolor{idCyan}{HTML}{22D3EE}
+\definecolor{idCyanSoft}{HTML}{A5F3FC}
+\definecolor{idInk}{HTML}{0F172A}
+\definecolor{idMist}{HTML}{F0F4F9}
+\definecolor{idGrey}{HTML}{8494A7}
+
+% \digestmark{ring color}{stream color}
+% Draws the icon centered at (0,0); ring radius 0.9 (units = cm at scale 1).
+\newcommand{\digestmark}[2]{%
+  % soft insight glow
+  \fill[idCyan, opacity=0.28] (0,0) circle (0.46);
+  \fill[idCyan, opacity=0.20] (0,0) circle (0.62);
+  % knowledge-base ring, open on the right (gap 5deg..25deg)
+  \draw[#1, line width=2.7pt, line cap=round] (25:0.9) arc (25:365:0.9);
+  % three source streams entering from the left, converging into the core
+  \draw[#2, line width=2.3pt, line cap=round]
+     (150:0.9) .. controls (-0.34,0.30) and (-0.28,0.13) .. (0,0);
+  \draw[#2, line width=2.3pt, line cap=round]
+     (180:0.9) .. controls (-0.40,0.00) and (-0.26,0.00) .. (0,0);
+  \draw[#2, line width=2.3pt, line cap=round]
+     (210:0.9) .. controls (-0.34,-0.30) and (-0.28,-0.13) .. (0,0);
+  % source points where the streams begin
+  \fill[#2] (150:0.9) circle (0.055);
+  \fill[#2] (180:0.9) circle (0.055);
+  \fill[#2] (210:0.9) circle (0.055);
+  % distilled insight core
+  \fill[idCyan] (0,0) circle (0.255);
+  \fill[white]  (0,0) circle (0.098);
+}

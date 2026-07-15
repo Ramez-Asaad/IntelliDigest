@@ -1,0 +1,31 @@
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \node[base,    minimum width=20mm] (user)  at (0,0) {User};
+  \node[tealbox, minimum width=32mm, minimum height=13mm] (agent) at (3.2,0)
+     {\code{AgentExecutor}\\{\scriptsize tool-calling}};
+
+  % tools
+  \node[base, minimum width=38mm] (t1) at (7.1,2.1)  {\code{search\_support\_kb}};
+  \node[base, minimum width=38mm] (t2) at (7.1,0.7)  {\code{classify\_issue}};
+  \node[base, minimum width=38mm] (t3) at (7.1,-0.7) {\code{create\_ticket} / \code{get}};
+  \node[amberbox, minimum width=38mm] (t4) at (7.1,-2.1) {UI-affordance tools};
+
+  % targets
+  \node[store, minimum width=30mm] (skb) at (11.6,2.1)  {support\\{\scriptsize collection}};
+  \node[store, minimum width=30mm] (db)  at (11.6,-0.7) {SQLite\\{\scriptsize tickets}};
+  \node[base,  minimum width=30mm] (fe)  at (11.6,-2.1) {Frontend modal\\{\scriptsize confirm / edit / close}};
+
+  \begin{scope}[on background layer]
+    \node[group, fill=mist, fit=(t1)(t2)(t3)(t4), inner sep=8pt] (gt) {};
+  \end{scope}
+  \node[grouplabel, anchor=south west, yshift=1.5pt] at (gt.north west) {Tools};
+
+  \draw[flowa] (user) -- (agent);
+  \draw[flow] (agent) to[out=60,in=180]  (t1);
+  \draw[flow] (agent) to[out=20,in=180]  (t2);
+  \draw[flow] (agent) to[out=-20,in=180] (t3);
+  \draw[flow] (agent) to[out=-60,in=180] (t4);
+
+  \draw[flow] (t1) -- (skb) node[tag,midway,above]{read only};
+  \draw[flow] (t3) -- (db);
+  \draw[flow] (t4) -- (fe) node[tag,pos=0.42,above=1pt]{\scriptsize signal, no write};
+\end{tikzpicture}

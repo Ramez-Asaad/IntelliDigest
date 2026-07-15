@@ -1,0 +1,14 @@
+# Dev override — auto-merged by `docker compose up` (no -f needed).
+# Live-mounts the source and runs uvicorn with --reload, so editing .py or
+# frontend files takes effect WITHOUT rebuilding the image or reinstalling deps.
+# The named volumes (chroma_db, data) from docker-compose.yml still mount on top,
+# so your vectors and tickets persist and are not shadowed by the bind mount.
+#
+# To run the baked production image instead, rename/remove this file, or:
+#   docker compose -f docker-compose.yml up -d --build
+services:
+  intellidigest:
+    volumes:
+      - .:/app
+    entrypoint: []
+    command: ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
